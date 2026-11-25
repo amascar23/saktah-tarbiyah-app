@@ -1,20 +1,23 @@
 {
   "expo": {
-    "name": "saktah-tarbiyah-app",
+    "name": "Saktah Tarbiyah",
     "slug": "saktah-tarbiyah-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo-saktah.png",
     "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/logo-saktah.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f4efdc"
+    },
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/logo-saktah.png",
+        "backgroundColor": "#f4efdc"
       }
     },
     "web": {
