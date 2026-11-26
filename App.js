@@ -1,6 +1,7 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
+  ActivityIndicator,
   Animated,
   Image,
   KeyboardAvoidingView,
@@ -17,6 +18,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts } from 'expo-font';
 import { Lora_600SemiBold, Lora_700Bold } from '@expo-google-fonts/lora';
 import {
@@ -30,6 +32,9 @@ if (LogBox && typeof LogBox.ignoreLogs === 'function') {
   LogBox.ignoreLogs(['SafeAreaView has been deprecated']);
 }
 
+const API_URL =
+  'https://script.google.com/macros/s/AKfycbz-k-NwStCklTxBF_zR_nKVGqVh8BU9_SfWq57SdVXea6u-3GcX408pqqu-xKDWpZbu/exec';
+const SESSION_STORAGE_KEY = '@saktah_tarbiyah_session_v1';
 const LOGO_SAKTAH = require('./assets/logo-saktah.png');
 const WHATSAPP_NUMBER = '6281802899219';
 
@@ -51,7 +56,7 @@ const COLORS = {
   dangerBg: '#f9e7e4',
   dangerText: '#9e382e',
   white: '#ffffff',
-  overlay: 'rgba(19, 27, 21, 0.6)',
+  overlay: 'rgba(19, 27, 21, 0.62)',
 };
 
 const BULAN_PENDEK = [
@@ -69,24 +74,8 @@ const BULAN_PENDEK = [
   'Des',
 ];
 
-const JENJANG_OPTIONS = ['TK', 'SD'];
-
-const PROGRAM_OPTIONS = [
-  'Calistung & Tematik',
-  'Mengaji Iqra & Tahsin',
-  'Adab & Doa Harian',
-];
-
+const STATUS_HADIR_OPTIONS = ['Hadir', 'Izin', 'Sakit', 'Alpa'];
 const PENGAJAR_OPTIONS = ['Kak Annisa', 'Kak Burhan'];
-
-const BULAN_OPTIONS = [
-  'November 2026',
-  'Desember 2026',
-  'Januari 2027',
-  'Februari 2027',
-  'Maret 2027',
-];
-
 const CAPAIAN_TAGS = [
   '#LancarMembaca',
   '#FokusBaik',
@@ -94,14 +83,7 @@ const CAPAIAN_TAGS = [
   '#BerhitungTeliti',
   '#AdabTerpuji',
 ];
-
-const PREDIKAT_OPTIONS = [
-  'Mulai Berkembang',
-  'Berkembang Sesuai Harapan',
-  'Sangat Baik',
-];
-
-const PEKAN_OPTIONS = ['Pekan 1', 'Pekan 2', 'Pekan 3', 'Pekan 4'];
+const MINGGU_OPTIONS = ['Minggu 1', 'Minggu 2', 'Minggu 3', 'Minggu 4'];
 
 const SESI_TEMPLATES = {
   60: [
@@ -153,147 +135,10 @@ const SESI_TEMPLATES = {
       id: 'eval',
       judul: 'Evaluasi Bintang',
       durasi: '15 Menit',
-      deskripsi: 'Kuis Bintang Ceria, cap stempel hadir, dan catatan orang tua.',
+      deskripsi: 'Kuis Bintang Ceria, pencatatan progres, dan doa penutup.',
     },
   ],
 };
-
-function createInitialKurikulum() {
-  return [
-    {
-      id: 'bulan-1',
-      kode: 'Bulan 1',
-      judul: 'Bulan 1 — Fondasi Huruf, Angka & Adab Dasar',
-      targetCapaian:
-        'Ananda mengenal huruf vokal & konsonan awal dengan gembira, membilang benda 1–10 secara konkret, serta terbiasa membaca doa sebelum belajar.',
-      predikat: 'Berkembang Sesuai Harapan',
-      catatanBulanan:
-        'Ananda antusias saat bermain kartu huruf dan mulai terbiasa duduk tenang sebelum memulai sesi.',
-      materiList: [
-        {
-          id: 'b1-m1',
-          pekan: 'Pekan 1',
-          judul: 'Huruf Vokal A-I-U-E-O & Doa Belajar',
-          deskripsi:
-            'Media kartu lipat bergambar, menebalkan garis lengkung, serta pembiasaan doa sebelum belajar.',
-          sudahDiajarkan: true,
-        },
-        {
-          id: 'b1-m2',
-          pekan: 'Pekan 2',
-          judul: 'Membilang Benda 1–10 & Huruf Hijaiyah Awal',
-          deskripsi:
-            'Menghitung kancing kayu warna-warni dan melafalkan huruf Alif hingga Tsa dengan jelas.',
-          sudahDiajarkan: true,
-        },
-        {
-          id: 'b1-m3',
-          pekan: 'Pekan 3',
-          judul: 'Konsonan Awal (B, C, D, K, M) & Adab Menyimak',
-          deskripsi:
-            'Permainan tebak benda sekitar rumah dan praktik mendengarkan pengajar hingga selesai.',
-          sudahDiajarkan: true,
-        },
-        {
-          id: 'b1-m4',
-          pekan: 'Pekan 4',
-          judul: 'Evaluasi Ceria Bulan 1 & Merapikan Meja',
-          deskripsi:
-            'Mengulang huruf vokal, angka 1–10, dan pembiasaan merapikan alat tulis seusai les.',
-          sudahDiajarkan: false,
-        },
-      ],
-    },
-    {
-      id: 'bulan-2',
-      kode: 'Bulan 2',
-      judul: 'Bulan 2 — Suku Kata, Berhitung Benda & Doa Harian',
-      targetCapaian:
-        'Ananda mampu membaca suku kata terbuka (ba-bi-bu-be-bo), berhitung penjumlahan benda 1–20, serta hafal doa sebelum makan dan untuk orang tua.',
-      predikat: 'Berkembang Sesuai Harapan',
-      catatanBulanan:
-        'Mulai percaya diri menyambung dua suku kata sederhana dan rajin mengucapkan kata tolong serta terima kasih.',
-      materiList: [
-        {
-          id: 'b2-m1',
-          pekan: 'Pekan 1',
-          judul: 'Suku Kata Terbuka (ba-bi-bu, ca-ci-cu)',
-          deskripsi:
-            'Kartu pasang suku kata dan menyusun kata dua suku seperti buku, baju, dan bola.',
-          sudahDiajarkan: true,
-        },
-        {
-          id: 'b2-m2',
-          pekan: 'Pekan 2',
-          judul: 'Penjumlahan Konkret 1–20 & Doa Sebelum Makan',
-          deskripsi:
-            'Menggabungkan dua kelompok stik es krim serta praktik cuci tangan dan makan dengan tangan kanan.',
-          sudahDiajarkan: true,
-        },
-        {
-          id: 'b2-m3',
-          pekan: 'Pekan 3',
-          judul: 'Iqra Jilid 1–2 & Pengurangan Ringan',
-          deskripsi:
-            'Membedakan harakat fathah dan kasrah serta latihan mengambil benda dari kelompok angka.',
-          sudahDiajarkan: false,
-        },
-        {
-          id: 'b2-m4',
-          pekan: 'Pekan 4',
-          judul: '3 Kata Ajaib & Doa Kedua Orang Tua',
-          deskripsi:
-            'Bermain peran menggunakan Tolong, Maaf, Terima Kasih serta murojaah doa harian.',
-          sudahDiajarkan: false,
-        },
-      ],
-    },
-    {
-      id: 'bulan-3',
-      kode: 'Bulan 3',
-      judul: 'Bulan 3 — Membaca Lancar, Penjumlahan & Hafalan Surat Pendek',
-      targetCapaian:
-        'Ananda lancar membaca kalimat sederhana 3–4 kata, menyelesaikan soal cerita penjumlahan, serta menghafal surat pendek pilihan dengan tartil.',
-      predikat: 'Mulai Berkembang',
-      catatanBulanan:
-        'Fokus pada kelancaran tempo membaca tanpa tergesa dan menjaga konsistensi panjang-pendek bacaan Iqra.',
-      materiList: [
-        {
-          id: 'b3-m1',
-          pekan: 'Pekan 1',
-          judul: 'Kalimat Sederhana & Kata Berakhiran (ng, ny)',
-          deskripsi:
-            'Membaca kartu cerita bergambar 2 baris dengan intonasi tenang dan jeda titik.',
-          sudahDiajarkan: true,
-        },
-        {
-          id: 'b3-m2',
-          pekan: 'Pekan 2',
-          judul: 'Penjumlahan & Pengurangan Dua Langkah',
-          deskripsi:
-            'Soal cerita kehidupan sehari-hari menggunakan ilustrasi buah dan alat tulis.',
-          sudahDiajarkan: false,
-        },
-        {
-          id: 'b3-m3',
-          pekan: 'Pekan 3',
-          judul: 'Hafalan Surat Al-Ikhlas & Al-Falaq',
-          deskripsi:
-            'Menyimak ayat per ayat dengan talaqqi lembut dan memperhatikan makhraj huruf.',
-          sudahDiajarkan: false,
-        },
-        {
-          id: 'b3-m4',
-          pekan: 'Pekan 4',
-          judul: 'Proyek Mini Buku Cerita & Evaluasi Bintang',
-          deskripsi:
-            'Ananda menyalin 3 kalimat pendek karyanya sendiri dan merayakan capaian bersama orang tua.',
-          sudahDiajarkan: false,
-        },
-      ],
-    },
-  ];
-}
 
 const DOA_ADAB_CARDS = [
   {
@@ -504,184 +349,141 @@ function formatTanggalHariIni() {
   return `${day} ${month} ${year}`;
 }
 
-function createInitialPertemuan(prefill = []) {
-  return Array.from({ length: 12 }, (_, index) => {
-    const nomor = index + 1;
-    const found = prefill.find((item) => item.nomor === nomor);
-    return {
-      nomor,
-      hadir: found ? Boolean(found.hadir) : false,
-      tanggal: found && found.tanggal ? found.tanggal : '',
-      catatan: found && found.catatan ? found.catatan : '',
-    };
-  });
+function generateId(prefix) {
+  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `${prefix}-${Date.now().toString(36).toUpperCase()}-${rand}`;
 }
 
-function createInitialStudents() {
-  return [
-    {
-      id: 'murid-1',
-      nama: 'Aisyah Humaira',
-      jenjang: 'TK',
-      program: 'Mengaji Iqra & Tahsin',
-      pengajar: 'Kak Annisa',
-      bulan: 'November 2026',
-      pertemuan: createInitialPertemuan([
-        {
-          nomor: 1,
-          hadir: true,
-          tanggal: '04 Nov 2026',
-          catatan:
-            'Iqra 2 hal. 10-12. Semangat membedakan huruf berharakat fathah. #FokusBaik',
-        },
-        {
-          nomor: 2,
-          hadir: true,
-          tanggal: '11 Nov 2026',
-          catatan:
-            'Iqra 2 hal. 13-15. Panjang pendek mad thabi’i mulai stabil. #HafalDoaBaru',
-        },
-        {
-          nomor: 3,
-          hadir: true,
-          tanggal: '18 Nov 2026',
-          catatan:
-            'Latihan huruf sambung serta praktik doa sebelum belajar dengan tenang. #AdabTerpuji',
-        },
-      ]),
-    },
-    {
-      id: 'murid-2',
-      nama: 'Muhammad Zaid',
-      jenjang: 'SD',
-      program: 'Calistung & Tematik',
-      pengajar: 'Kak Burhan',
-      bulan: 'November 2026',
-      pertemuan: createInitialPertemuan([
-        {
-          nomor: 1,
-          hadir: true,
-          tanggal: '05 Nov 2026',
-          catatan:
-            'Membaca suku kata terbuka dan menulis 5 kalimat pendek dengan rapi. #LancarMembaca',
-        },
-        {
-          nomor: 2,
-          hadir: true,
-          tanggal: '12 Nov 2026',
-          catatan:
-            'Berhitung penjumlahan & pengurangan benda 1-20 dengan teliti. #BerhitungTeliti #FokusBaik',
-        },
-      ]),
-    },
-  ];
+function normalizeText(value) {
+  if (value === null || value === undefined) return '';
+  return String(value);
 }
 
-function countHadir(student) {
-  return student.pertemuan.filter((item) => item.hadir).length;
+function normalizeAkunRow(row) {
+  return {
+    Kode_Masuk: normalizeText(row.Kode_Masuk ?? row.kode_masuk).trim(),
+    Peran: normalizeText(row.Peran ?? row.peran).trim().toLowerCase(),
+    Nama_User: normalizeText(row.Nama_User ?? row.nama_user).trim(),
+    Nama_Anak: normalizeText(row.Nama_Anak ?? row.nama_anak).trim(),
+  };
 }
 
-function getMonthProgress(month) {
-  const total = month.materiList.length;
-  const done = month.materiList.filter((m) => m.sudahDiajarkan).length;
-  const percent = total > 0 ? Math.round((done / total) * 100) : 0;
-  return { total, done, percent };
+function normalizeKurikulumRow(row) {
+  return {
+    ID: normalizeText(row.ID ?? row.id),
+    Bulan: normalizeText(row.Bulan ?? row.bulan),
+    Minggu: normalizeText(row.Minggu ?? row.minggu),
+    Judul_Materi: normalizeText(row.Judul_Materi ?? row.judul_materi),
+    Deskripsi: normalizeText(row.Deskripsi ?? row.deskripsi),
+  };
 }
 
-function buildWhatsAppAttendanceReport(student) {
-  const nama = student.nama.trim() || '(Belum diisi)';
-  const jenjang = student.jenjang || 'TK';
-  const program = student.program.trim() || '(Belum dipilih)';
-  const pengajar = student.pengajar.trim() || '(Belum diisi)';
-  const bulan = student.bulan.trim() || '(Belum diisi)';
-  const totalHadir = countHadir(student);
+function normalizeProgresRow(row) {
+  return {
+    ID: normalizeText(row.ID ?? row.id),
+    Tanggal: normalizeText(row.Tanggal ?? row.tanggal),
+    Nama_Anak: normalizeText(row.Nama_Anak ?? row.nama_anak),
+    Status_Hadir: normalizeText(row.Status_Hadir ?? row.status_hadir) || 'Hadir',
+    Catatan_Perkembangan: normalizeText(
+      row.Catatan_Perkembangan ?? row.catatan_perkembangan
+    ),
+    Pengajar: normalizeText(row.Pengajar ?? row.pengajar),
+  };
+}
 
-  const recordedMeetings = student.pertemuan.filter(
-    (p) => p.hadir || p.catatan.trim().length > 0
-  );
-  const latestMeeting =
-    recordedMeetings.length > 0
-      ? recordedMeetings[recordedMeetings.length - 1]
-      : null;
+function normalizeSaranRow(row) {
+  return {
+    ID: normalizeText(row.ID ?? row.id),
+    Tanggal: normalizeText(row.Tanggal ?? row.tanggal),
+    Nama_Wali: normalizeText(row.Nama_Wali ?? row.nama_wali),
+    Nama_Anak: normalizeText(row.Nama_Anak ?? row.nama_anak),
+    Isi_Saran: normalizeText(row.Isi_Saran ?? row.isi_saran),
+    Status_Baca:
+      normalizeText(row.Status_Baca ?? row.status_baca) || 'Belum Dibaca',
+  };
+}
 
-  const lines = [
-    '*SAKTAH TARBIYAH — KARTU ABSEN & PERKEMBANGAN*',
-    '----------------------------------------',
-    `Nama Murid : ${nama} (${jenjang})`,
-    `Program    : ${program}`,
-    `Pengajar   : ${pengajar}`,
-    `Bulan      : ${bulan}`,
-    `Kehadiran  : ${totalHadir} / 12 Pertemuan Tercapai`,
-    '',
-  ];
-
-  if (latestMeeting) {
-    lines.push('*Sorotan Pertemuan Terbaru:*');
-    const dateInfo = latestMeeting.tanggal ? ` (${latestMeeting.tanggal})` : '';
-    const statusText = latestMeeting.hadir ? 'Hadir' : 'Catatan Tersimpan';
-    lines.push(`Pertemuan ke-${latestMeeting.nomor}${dateInfo} • ${statusText}`);
-    lines.push(
-      latestMeeting.catatan.trim() ||
-      'Ananda mengikuti sesi belajar dengan tenang dan antusias.'
+async function fetchSpreadsheetData() {
+  const response = await fetch(API_URL, { method: 'GET' });
+  const rawText = await response.text();
+  let json;
+  try {
+    json = JSON.parse(rawText);
+  } catch (err) {
+    throw new Error(
+      'Server Google Apps Script tidak mengembalikan JSON yang valid. Pastikan tab Akun, Kurikulum, Progres, dan Saran tersedia.'
     );
-    lines.push('');
   }
+  if (!response.ok) {
+    throw new Error(`Gagal memuat data (${response.status}).`);
+  }
+  return {
+    akun: Array.isArray(json.akun) ? json.akun.map(normalizeAkunRow) : [],
+    kurikulum: Array.isArray(json.kurikulum)
+      ? json.kurikulum.map(normalizeKurikulumRow)
+      : [],
+    progres: Array.isArray(json.progres)
+      ? json.progres.map(normalizeProgresRow)
+      : [],
+    saran: Array.isArray(json.saran) ? json.saran.map(normalizeSaranRow) : [],
+  };
+}
 
-  lines.push('*Rekap Pertemuan (1–12):*');
-  if (recordedMeetings.length === 0) {
-    lines.push('Belum ada pertemuan yang dicap hadir atau dicatat.');
+async function postSpreadsheetAction(payload) {
+  const response = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/plain;charset=utf-8',
+    },
+    body: JSON.stringify(payload),
+  });
+  const rawText = await response.text();
+  let json;
+  try {
+    json = JSON.parse(rawText);
+  } catch (err) {
+    throw new Error(
+      'Server Google Apps Script gagal memproses perubahan data.'
+    );
+  }
+  if (json && json.status && json.status !== 'success' && json.error) {
+    throw new Error(String(json.error));
+  }
+  return json;
+}
+
+function buildProgresWhatsAppReport(studentName, records) {
+  const hadirCount = records.filter(
+    (r) => r.Status_Hadir.toLowerCase() === 'hadir'
+  ).length;
+  const lines = [
+    '*SAKTAH TARBIYAH — REKAP PROGRES BELAJAR*',
+    '----------------------------------------',
+    `Nama Murid : ${studentName}`,
+    `Kehadiran  : ${hadirCount} Pertemuan Hadir (dari ${records.length} catatan)`,
+    '',
+    '*Catatan Perkembangan Terbaru:*',
+  ];
+
+  if (records.length === 0) {
+    lines.push('Belum ada catatan progres.');
   } else {
-    recordedMeetings.forEach((item) => {
-      const cap = item.hadir
-        ? `Hadir (${item.tanggal || 'Tercatat'})`
-        : 'Belum Hadir';
-      const note = item.catatan.trim() ? ` — ${item.catatan.trim()}` : '';
-      lines.push(`• Pertemuan ${item.nomor}: ${cap}${note}`);
+    records.slice(0, 12).forEach((item, index) => {
+      lines.push(
+        `${index + 1}. ${item.Tanggal || '-'} • ${item.Status_Hadir} (${
+          item.Pengajar || 'Pengajar'
+        })`
+      );
+      if (item.Catatan_Perkembangan) {
+        lines.push(`   ${item.Catatan_Perkembangan}`);
+      }
     });
   }
 
   lines.push('');
   lines.push(
-    'Terima kasih atas pendampingan Ayah & Bunda di rumah. Wassalamu’alaikum warahmatullahi wabarakatuh.'
+    'Terima kasih atas pendampingan Ayah & Bunda di rumah. Wassalamu’alaikum.'
   );
-
-  return lines.join('\n');
-}
-
-function buildWhatsAppMonthlyReport(month, student) {
-  const { total, done, percent } = getMonthProgress(month);
-  const namaMurid = student.nama.trim() || 'Ananda';
-  const lines = [
-    '*SAKTAH TARBIYAH — RAPOR KURIKULUM BULANAN*',
-    '----------------------------------------',
-    `Murid      : ${namaMurid} (${student.jenjang})`,
-    `Pengajar   : ${student.pengajar || 'Tim Saktah Tarbiyah'}`,
-    `Program    : ${month.judul}`,
-    `Capaian    : ${done} / ${total} Materi Sudah Diajarkan (${percent}%)`,
-    `Predikat   : ${month.predikat}`,
-    '',
-    '*Target Capaian Bulan Ini:*',
-    month.targetCapaian.trim() || '-',
-    '',
-    '*Materi & Aktivitas:*',
-  ];
-
-  month.materiList.forEach((m) => {
-    const mark = m.sudahDiajarkan ? '[Sudah]' : '[Proses]';
-    lines.push(`• ${m.pekan} ${mark} ${m.judul}`);
-  });
-
-  if (month.catatanBulanan.trim()) {
-    lines.push('');
-    lines.push('*Catatan Capaian Anak:*');
-    lines.push(month.catatanBulanan.trim());
-  }
-
-  lines.push('');
-  lines.push(
-    'Semoga Allah mudahkan langkah belajar ananda di bulan berikutnya. Wassalamu’alaikum.'
-  );
-
   return lines.join('\n');
 }
 
@@ -696,8 +498,8 @@ function PaperCard({
     variant === 'sage'
       ? COLORS.sage
       : variant === 'forest'
-        ? COLORS.forest
-        : COLORS.ivory;
+      ? COLORS.forest
+      : COLORS.ivory;
 
   return (
     <View style={styles.paperWrap}>
@@ -742,11 +544,28 @@ export default function App() {
 
   const scrollViewRef = useRef(null);
 
-  const [activeTab, setActiveTab] = useState('beranda'); // 'beranda' | 'kurikulum' | 'absen' | 'play'
+  // Auth & AsyncStorage Session State
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loginCode, setLoginCode] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
+
+  // Live Google Sheets Data
+  const [akunList, setAkunList] = useState([]);
+  const [kurikulumList, setKurikulumList] = useState([]);
+  const [progresList, setProgresList] = useState([]);
+  const [saranList, setSaranList] = useState([]);
+  const [syncingData, setSyncingData] = useState(false);
+  const [syncError, setSyncError] = useState('');
+  const [mutating, setMutating] = useState(false);
+
+  // Navigation
+  const [activeTab, setActiveTab] = useState('beranda'); // 'beranda' | 'kurikulum' | 'progres' | 'saran' | 'play'
   const [showTentang, setShowTentang] = useState(false);
 
-  // Beranda: Alur Sesi Mengajar Hari Ini
-  const [sessionDuration, setSessionDuration] = useState(60); // 60 | 90
+  // Beranda Teaching Flow (Admin)
+  const [sessionDuration, setSessionDuration] = useState(60);
   const [checkedStages, setCheckedStages] = useState({
     ice: true,
     inti: false,
@@ -754,56 +573,57 @@ export default function App() {
     eval: false,
   });
 
-  // Kurikulum: Drill-down per bulan
-  const [kurikulumList, setKurikulumList] = useState(createInitialKurikulum);
-  const [selectedMonthId, setSelectedMonthId] = useState(null); // null = Level 1, id = Level 2
-  const [addMonthModalVisible, setAddMonthModalVisible] = useState(false);
-  const [newMonthTitle, setNewMonthTitle] = useState('');
-  const [newMonthTarget, setNewMonthTarget] = useState('');
-  const [newMonthError, setNewMonthError] = useState('');
-
-  const [addMateriModalVisible, setAddMateriModalVisible] = useState(false);
-  const [newMateriPekan, setNewMateriPekan] = useState(PEKAN_OPTIONS[0]);
-  const [newMateriTitle, setNewMateriTitle] = useState('');
-  const [newMateriDesc, setNewMateriDesc] = useState('');
-  const [newMateriError, setNewMateriError] = useState('');
-
-  // Kartu Absen: Multi-Murid
-  const [students, setStudents] = useState(createInitialStudents);
-  const [activeStudentId, setActiveStudentId] = useState('murid-1');
-  const [profileFormOpen, setProfileFormOpen] = useState(true);
-
-  const [addStudentModalVisible, setAddStudentModalVisible] = useState(false);
-  const [newStudentName, setNewStudentName] = useState('');
-  const [newStudentJenjang, setNewStudentJenjang] = useState('TK');
-  const [newStudentProgram, setNewStudentProgram] = useState(
-    PROGRAM_OPTIONS[0]
-  );
-  const [newStudentPengajar, setNewStudentPengajar] = useState(
-    PENGAJAR_OPTIONS[0]
-  );
-  const [newStudentBulan, setNewStudentBulan] = useState(BULAN_OPTIONS[0]);
-  const [newStudentError, setNewStudentError] = useState('');
-
-  // Modals Preview & Alerts
-  const [waPreviewModal, setWaPreviewModal] = useState({
+  // Kurikulum Drill-down & Modal
+  const [selectedBulan, setSelectedBulan] = useState(null);
+  const [kurikulumModal, setKurikulumModal] = useState({
     visible: false,
-    title: '',
-    text: '',
+    mode: 'add', // 'add' | 'edit'
+    id: '',
+    bulan: '',
+    minggu: 'Minggu 1',
+    judul: '',
+    deskripsi: '',
+    error: '',
   });
-  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+
+  // Progres Filter & Modal
+  const [selectedAnakFilter, setSelectedAnakFilter] = useState('Semua');
+  const [progresModal, setProgresModal] = useState({
+    visible: false,
+    mode: 'add',
+    id: '',
+    tanggal: '',
+    namaAnak: '',
+    statusHadir: 'Hadir',
+    catatan: '',
+    pengajar: 'Kak Annisa',
+    error: '',
+  });
+
+  // Saran Filter & Wali Form
+  const [saranFilter, setSaranFilter] = useState('Semua');
+  const [newSaranText, setNewSaranText] = useState('');
+  const [saranFeedback, setSaranFeedback] = useState('');
+
+  // Confirm & Info Modals
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState({
+    visible: false,
+    sheet: '',
+    id: '',
+    label: '',
+  });
   const [infoModal, setInfoModal] = useState({
     visible: false,
     title: '',
     message: '',
   });
+  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
 
   // Saktah Play
-  const [playMode, setPlayMode] = useState('lipat'); // 'lipat' | 'kuis'
+  const [playMode, setPlayMode] = useState('lipat');
   const [doaFilter, setDoaFilter] = useState('Semua');
   const [openDoaIds, setOpenDoaIds] = useState({ 'doa-belajar': true });
   const [doneChallenges, setDoneChallenges] = useState({});
-
   const [quizIndex, setQuizIndex] = useState(0);
   const [quizAnswers, setQuizAnswers] = useState({});
   const [quizFinished, setQuizFinished] = useState(false);
@@ -811,20 +631,124 @@ export default function App() {
   const starPulse = useRef(new Animated.Value(1)).current;
   const certScale = useRef(new Animated.Value(1)).current;
 
-  const activeStudent =
-    students.find((s) => s.id === activeStudentId) || students[0];
-
-  const selectedMonth = selectedMonthId
-    ? kurikulumList.find((m) => m.id === selectedMonthId) || null
-    : null;
+  const isAdmin = currentUser?.Peran === 'admin';
+  const isWali = currentUser?.Peran === 'wali';
 
   const androidTopInset =
     Platform.OS === 'android' ? RNStatusBar.currentHeight || 28 : 0;
 
   const scrollToTop = () => {
-    if (scrollViewRef.current && typeof scrollViewRef.current.scrollTo === 'function') {
+    if (
+      scrollViewRef.current &&
+      typeof scrollViewRef.current.scrollTo === 'function'
+    ) {
       scrollViewRef.current.scrollTo({ y: 0, animated: true });
     }
+  };
+
+  const refreshLiveData = useCallback(async () => {
+    setSyncingData(true);
+    setSyncError('');
+    try {
+      const data = await fetchSpreadsheetData();
+      setAkunList(data.akun);
+      setKurikulumList(data.kurikulum);
+      setProgresList(data.progres);
+      setSaranList(data.saran);
+      return data;
+    } catch (err) {
+      setSyncError(err.message || 'Gagal terhubung ke server Google Sheets.');
+      return null;
+    } finally {
+      setSyncingData(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const bootstrapSession = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(SESSION_STORAGE_KEY);
+        if (stored && active) {
+          const parsed = JSON.parse(stored);
+          if (parsed && parsed.Kode_Masuk && parsed.Peran) {
+            setCurrentUser(parsed);
+            await refreshLiveData();
+          }
+        }
+      } catch (err) {
+        // Ignore corrupted session and stay on Login screen
+      } finally {
+        if (active) setCheckingSession(false);
+      }
+    };
+    bootstrapSession();
+    return () => {
+      active = false;
+    };
+  }, [refreshLiveData]);
+
+  const handleLogin = async () => {
+    const cleanCode = loginCode.trim();
+    if (!cleanCode) {
+      setLoginError('Masukkan Kode Masuk terlebih dahulu.');
+      return;
+    }
+
+    setLoginLoading(true);
+    setLoginError('');
+    try {
+      const data = await fetchSpreadsheetData();
+      setAkunList(data.akun);
+      setKurikulumList(data.kurikulum);
+      setProgresList(data.progres);
+      setSaranList(data.saran);
+
+      const matched = data.akun.find(
+        (acc) => acc.Kode_Masuk.toLowerCase() === cleanCode.toLowerCase()
+      );
+      if (!matched) {
+        setLoginError(
+          'Kode Masuk tidak ditemukan di data Akun. Silakan periksa kembali.'
+        );
+        return;
+      }
+
+      const normalizedRole = matched.Peran === 'admin' ? 'admin' : 'wali';
+      const userSession = {
+        ...matched,
+        Peran: normalizedRole,
+      };
+      await AsyncStorage.setItem(
+        SESSION_STORAGE_KEY,
+        JSON.stringify(userSession)
+      );
+      setCurrentUser(userSession);
+      setLoginCode('');
+      setActiveTab('beranda');
+      setShowTentang(false);
+      setSelectedBulan(null);
+    } catch (err) {
+      setLoginError(
+        err.message || 'Tidak dapat memverifikasi Kode Masuk saat ini.'
+      );
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleConfirmLogout = async () => {
+    setLogoutModalVisible(false);
+    try {
+      await AsyncStorage.removeItem(SESSION_STORAGE_KEY);
+    } catch (err) {
+      // Proceed clearing state
+    }
+    setCurrentUser(null);
+    setActiveTab('beranda');
+    setShowTentang(false);
+    setSelectedBulan(null);
+    setSyncError('');
   };
 
   const navigateTab = (tabKey) => {
@@ -853,289 +777,352 @@ export default function App() {
     }).start();
   };
 
-  /* Beranda handlers */
-  const toggleStageChecked = (stageId) => {
-    setCheckedStages((prev) => ({
-      ...prev,
-      [stageId]: !prev[stageId],
-    }));
-  };
-
-  const resetSessionStages = () => {
-    setCheckedStages({
-      ice: false,
-      inti: false,
-      jeda: false,
-      eval: false,
-    });
-  };
-
-  /* Kurikulum handlers */
-  const handleOpenMonthDetail = (monthId) => {
-    setSelectedMonthId(monthId);
-    scrollToTop();
-  };
-
-  const handleBackToMonths = () => {
-    setSelectedMonthId(null);
-    scrollToTop();
-  };
-
-  const updateSelectedMonthField = (field, value) => {
-    if (!selectedMonth) return;
-    setKurikulumList((prev) =>
-      prev.map((m) => (m.id === selectedMonth.id ? { ...m, [field]: value } : m))
-    );
-  };
-
-  const toggleMateriDone = (materiId) => {
-    if (!selectedMonth) return;
-    setKurikulumList((prev) =>
-      prev.map((m) => {
-        if (m.id !== selectedMonth.id) return m;
-        return {
-          ...m,
-          materiList: m.materiList.map((mat) =>
-            mat.id === materiId
-              ? { ...mat, sudahDiajarkan: !mat.sudahDiajarkan }
-              : mat
-          ),
-        };
-      })
-    );
-  };
-
-  const handleOpenAddMonth = () => {
-    const nextNumber = kurikulumList.length + 1;
-    setNewMonthTitle(`Bulan ${nextNumber} — `);
-    setNewMonthTarget('');
-    setNewMonthError('');
-    setAddMonthModalVisible(true);
-  };
-
-  const handleSaveNewMonth = () => {
-    const cleanTitle = newMonthTitle.trim();
-    if (!cleanTitle) {
-      setNewMonthError('Silakan tulis judul atau tema bulan terlebih dahulu.');
-      return;
-    }
-    const nextNumber = kurikulumList.length + 1;
-    const newId = `bulan-${Date.now()}`;
-    const newMonth = {
-      id: newId,
-      kode: `Bulan ${nextNumber}`,
-      judul: cleanTitle,
-      targetCapaian:
-        newMonthTarget.trim() ||
-        'Ananda bertumbuh sesuai tempo belajar yang tenang, memahami materi inti, dan mempraktikkan adab harian.',
-      predikat: 'Mulai Berkembang',
-      catatanBulanan: '',
-      materiList: [
-        {
-          id: `${newId}-m1`,
-          pekan: 'Pekan 1',
-          judul: 'Pengenalan Tema & Pemanasan Materi',
-          deskripsi:
-            'Aktivitas awal menggunakan kartu visual dan permainan interaktif ramah anak.',
-          sudahDiajarkan: false,
-        },
-        {
-          id: `${newId}-m2`,
-          pekan: 'Pekan 2',
-          judul: 'Latihan Terarah & Murojaah Adab',
-          deskripsi:
-            'Pendampingan bertahap sesuai kemampuan ananda serta praktik doa harian.',
-          sudahDiajarkan: false,
-        },
-      ],
-    };
-    setKurikulumList((prev) => [...prev, newMonth]);
-    setAddMonthModalVisible(false);
-    setSelectedMonthId(newId);
-    scrollToTop();
-  };
-
-  const handleOpenAddMateri = () => {
-    setNewMateriPekan(PEKAN_OPTIONS[0]);
-    setNewMateriTitle('');
-    setNewMateriDesc('');
-    setNewMateriError('');
-    setAddMateriModalVisible(true);
-  };
-
-  const handleSaveNewMateri = () => {
-    if (!selectedMonth) return;
-    if (!newMateriTitle.trim()) {
-      setNewMateriError('Mohon isi judul materi terlebih dahulu.');
-      return;
-    }
-    const newItem = {
-      id: `mat-${Date.now()}`,
-      pekan: newMateriPekan.trim() || 'Pekan 1',
-      judul: newMateriTitle.trim(),
-      deskripsi:
-        newMateriDesc.trim() ||
-        'Pendampingan langsung dengan media kartu belajar dan latihan bertahap.',
-      sudahDiajarkan: false,
-    };
-    setKurikulumList((prev) =>
-      prev.map((m) =>
-        m.id === selectedMonth.id
-          ? { ...m, materiList: [...m.materiList, newItem] }
-          : m
-      )
-    );
-    setAddMateriModalVisible(false);
-  };
-
-  /* Kartu Absen handlers */
-  const updateStudentField = (field, value) => {
-    setStudents((prev) =>
-      prev.map((s) => (s.id === activeStudent.id ? { ...s, [field]: value } : s))
-    );
-  };
-
-  const toggleMeetingStamp = (nomor) => {
-    const today = formatTanggalHariIni();
-    setStudents((prev) =>
-      prev.map((student) => {
-        if (student.id !== activeStudent.id) return student;
-        return {
-          ...student,
-          pertemuan: student.pertemuan.map((item) => {
-            if (item.nomor !== nomor) return item;
-            const nextHadir = !item.hadir;
-            return {
-              ...item,
-              hadir: nextHadir,
-              tanggal: nextHadir ? today : '',
-            };
-          }),
-        };
-      })
-    );
-  };
-
-  const updateMeetingNote = (nomor, text) => {
-    setStudents((prev) =>
-      prev.map((student) => {
-        if (student.id !== activeStudent.id) return student;
-        return {
-          ...student,
-          pertemuan: student.pertemuan.map((item) =>
-            item.nomor === nomor ? { ...item, catatan: text } : item
-          ),
-        };
-      })
-    );
-  };
-
-  const toggleMeetingTag = (nomor, tag) => {
-    setStudents((prev) =>
-      prev.map((student) => {
-        if (student.id !== activeStudent.id) return student;
-        return {
-          ...student,
-          pertemuan: student.pertemuan.map((item) => {
-            if (item.nomor !== nomor) return item;
-            const current = item.catatan;
-            if (current.includes(tag)) {
-              const cleaned = current
-                .replace(tag, '')
-                .replace(/\s{2,}/g, ' ')
-                .trim();
-              return { ...item, catatan: cleaned };
-            }
-            const next = current.trim() ? `${current.trim()} ${tag}` : tag;
-            return { ...item, catatan: next };
-          }),
-        };
-      })
-    );
-  };
-
-  const handleOpenAddStudent = () => {
-    setNewStudentName('');
-    setNewStudentJenjang('TK');
-    setNewStudentProgram(PROGRAM_OPTIONS[0]);
-    setNewStudentPengajar(PENGAJAR_OPTIONS[0]);
-    setNewStudentBulan(BULAN_OPTIONS[0]);
-    setNewStudentError('');
-    setAddStudentModalVisible(true);
-  };
-
-  const handleCreateStudent = () => {
-    if (!newStudentName.trim()) {
-      setNewStudentError('Mohon isi nama murid terlebih dahulu.');
-      return;
-    }
-    const id = `murid-${Date.now()}`;
-    const created = {
-      id,
-      nama: newStudentName.trim(),
-      jenjang: newStudentJenjang,
-      program: newStudentProgram.trim() || PROGRAM_OPTIONS[0],
-      pengajar: newStudentPengajar.trim() || PENGAJAR_OPTIONS[0],
-      bulan: newStudentBulan.trim() || BULAN_OPTIONS[0],
-      pertemuan: createInitialPertemuan(),
-    };
-    setStudents((prev) => [...prev, created]);
-    setActiveStudentId(id);
-    setAddStudentModalVisible(false);
-  };
-
-  const handleDeleteStudent = () => {
-    if (students.length <= 1) {
-      setDeleteConfirmVisible(false);
-      setInfoModal({
-        visible: true,
-        title: 'Minimal Satu Profil',
-        message:
-          'Sisakan minimal 1 profil murid aktif. Anda bisa mengubah datanya langsung pada formulir profil.',
-      });
-      return;
-    }
-    const remaining = students.filter((s) => s.id !== activeStudent.id);
-    setStudents(remaining);
-    setActiveStudentId(remaining[0].id);
-    setDeleteConfirmVisible(false);
-  };
-
-  /* WhatsApp Linking */
   const openWhatsAppUrl = async (pesan) => {
     const url =
       'https://wa.me/' + WHATSAPP_NUMBER + '?text=' + encodeURIComponent(pesan);
     try {
       await Linking.openURL(url);
-    } catch (error) {
+    } catch (err) {
       setInfoModal({
         visible: true,
         title: 'Tidak Dapat Membuka WhatsApp',
-        message:
-          'Pastikan aplikasi WhatsApp atau peramban tersedia di perangkat Anda. Anda dapat melihat isi pesan lewat tombol Pratinjau.',
+        message: 'Pastikan aplikasi WhatsApp atau peramban tersedia di perangkat Anda.',
       });
     }
   };
 
-  const handleSendAttendanceReport = () => {
-    if (!activeStudent.nama.trim()) {
-      setInfoModal({
-        visible: true,
-        title: 'Nama Murid Kosong',
-        message:
-          'Mohon isi Nama Murid pada profil terlebih dahulu sebelum mengirim laporan.',
-      });
+  /* CRUD: Kurikulum (Admin Only) */
+  const openAddKurikulum = (prefillBulan = '') => {
+    setKurikulumModal({
+      visible: true,
+      mode: 'add',
+      id: '',
+      bulan: prefillBulan || selectedBulan || 'Bulan 1',
+      minggu: 'Minggu 1',
+      judul: '',
+      deskripsi: '',
+      error: '',
+    });
+  };
+
+  const openEditKurikulum = (item) => {
+    setKurikulumModal({
+      visible: true,
+      mode: 'edit',
+      id: item.ID,
+      bulan: item.Bulan,
+      minggu: item.Minggu || 'Minggu 1',
+      judul: item.Judul_Materi,
+      deskripsi: item.Deskripsi,
+      error: '',
+    });
+  };
+
+  const handleSubmitKurikulum = async () => {
+    if (!kurikulumModal.bulan.trim() || !kurikulumModal.judul.trim()) {
+      setKurikulumModal((prev) => ({
+        ...prev,
+        error: 'Bulan dan Judul Materi wajib diisi.',
+      }));
       return;
     }
-    openWhatsAppUrl(buildWhatsAppAttendanceReport(activeStudent));
+
+    setMutating(true);
+    try {
+      const id =
+        kurikulumModal.mode === 'edit'
+          ? kurikulumModal.id
+          : generateId('KUR');
+      const row = [
+        id,
+        kurikulumModal.bulan.trim(),
+        kurikulumModal.minggu.trim() || 'Minggu 1',
+        kurikulumModal.judul.trim(),
+        kurikulumModal.deskripsi.trim(),
+      ];
+
+      await postSpreadsheetAction(
+        kurikulumModal.mode === 'edit'
+          ? { sheet: 'Kurikulum', action: 'update', id, row }
+          : { sheet: 'Kurikulum', action: 'add', row }
+      );
+
+      setKurikulumModal((prev) => ({ ...prev, visible: false }));
+      await refreshLiveData();
+    } catch (err) {
+      setKurikulumModal((prev) => ({
+        ...prev,
+        error: err.message || 'Gagal menyimpan data Kurikulum.',
+      }));
+    } finally {
+      setMutating(false);
+    }
   };
 
-  const handleSendMonthlyReport = () => {
-    if (!selectedMonth) return;
-    openWhatsAppUrl(buildWhatsAppMonthlyReport(selectedMonth, activeStudent));
+  /* CRUD: Progres (Admin Only) */
+  const studentNamesPool = useMemo(() => {
+    const names = new Set();
+    akunList.forEach((a) => {
+      if (a.Nama_Anak) names.add(a.Nama_Anak);
+    });
+    progresList.forEach((p) => {
+      if (p.Nama_Anak) names.add(p.Nama_Anak);
+    });
+    return Array.from(names);
+  }, [akunList, progresList]);
+
+  const openAddProgres = () => {
+    const defaultStudent =
+      selectedAnakFilter !== 'Semua'
+        ? selectedAnakFilter
+        : studentNamesPool[0] || '';
+    const defaultPengajar =
+      currentUser?.Nama_User &&
+      PENGAJAR_OPTIONS.some((p) =>
+        p.toLowerCase().includes(currentUser.Nama_User.toLowerCase())
+      )
+        ? currentUser.Nama_User
+        : currentUser?.Nama_User || PENGAJAR_OPTIONS[0];
+
+    setProgresModal({
+      visible: true,
+      mode: 'add',
+      id: '',
+      tanggal: formatTanggalHariIni(),
+      namaAnak: defaultStudent,
+      statusHadir: 'Hadir',
+      catatan: '',
+      pengajar: defaultPengajar,
+      error: '',
+    });
   };
 
-  /* Saktah Play handlers */
+  const openEditProgres = (item) => {
+    setProgresModal({
+      visible: true,
+      mode: 'edit',
+      id: item.ID,
+      tanggal: item.Tanggal || formatTanggalHariIni(),
+      namaAnak: item.Nama_Anak,
+      statusHadir: item.Status_Hadir || 'Hadir',
+      catatan: item.Catatan_Perkembangan,
+      pengajar: item.Pengajar || currentUser?.Nama_User || PENGAJAR_OPTIONS[0],
+      error: '',
+    });
+  };
+
+  const toggleProgresTag = (tag) => {
+    setProgresModal((prev) => {
+      const current = prev.catatan;
+      if (current.includes(tag)) {
+        const cleaned = current
+          .replace(tag, '')
+          .replace(/\s{2,}/g, ' ')
+          .trim();
+        return { ...prev, catatan: cleaned };
+      }
+      return {
+        ...prev,
+        catatan: current.trim() ? `${current.trim()} ${tag}` : tag,
+      };
+    });
+  };
+
+  const handleSubmitProgres = async () => {
+    if (!progresModal.namaAnak.trim() || !progresModal.tanggal.trim()) {
+      setProgresModal((prev) => ({
+        ...prev,
+        error: 'Tanggal dan Nama Anak wajib diisi.',
+      }));
+      return;
+    }
+
+    setMutating(true);
+    try {
+      const id =
+        progresModal.mode === 'edit' ? progresModal.id : generateId('PRG');
+      const row = [
+        id,
+        progresModal.tanggal.trim(),
+        progresModal.namaAnak.trim(),
+        progresModal.statusHadir,
+        progresModal.catatan.trim(),
+        progresModal.pengajar.trim() || PENGAJAR_OPTIONS[0],
+      ];
+
+      await postSpreadsheetAction(
+        progresModal.mode === 'edit'
+          ? { sheet: 'Progres', action: 'update', id, row }
+          : { sheet: 'Progres', action: 'add', row }
+      );
+
+      setProgresModal((prev) => ({ ...prev, visible: false }));
+      await refreshLiveData();
+    } catch (err) {
+      setProgresModal((prev) => ({
+        ...prev,
+        error: err.message || 'Gagal menyimpan data Progres.',
+      }));
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  /* Delete Handler (Admin Only for Kurikulum & Progres) */
+  const handleConfirmDelete = async () => {
+    const { sheet, id } = deleteConfirmModal;
+    setMutating(true);
+    try {
+      await postSpreadsheetAction({
+        sheet,
+        action: 'delete',
+        id,
+      });
+      setDeleteConfirmModal({ visible: false, sheet: '', id: '', label: '' });
+      await refreshLiveData();
+    } catch (err) {
+      setDeleteConfirmModal({ visible: false, sheet: '', id: '', label: '' });
+      setInfoModal({
+        visible: true,
+        title: 'Gagal Menghapus Data',
+        message: err.message || 'Terjadi kendala saat menghapus data.',
+      });
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  /* Saran Handlers */
+  const handleToggleSaranRead = async (item) => {
+    if (!isAdmin || mutating) return;
+    const isRead = item.Status_Baca.toLowerCase() === 'sudah dibaca';
+    const nextStatus = isRead ? 'Belum Dibaca' : 'Sudah Dibaca';
+
+    setMutating(true);
+    try {
+      await postSpreadsheetAction({
+        sheet: 'Saran',
+        action: 'update',
+        id: item.ID,
+        row: [
+          item.ID,
+          item.Tanggal,
+          item.Nama_Wali,
+          item.Nama_Anak,
+          item.Isi_Saran,
+          nextStatus,
+        ],
+      });
+      await refreshLiveData();
+    } catch (err) {
+      setInfoModal({
+        visible: true,
+        title: 'Gagal Memperbarui Status Baca',
+        message: err.message || 'Tidak dapat mengubah status baca pesan.',
+      });
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const handleSendSaranWali = async () => {
+    const cleanText = newSaranText.trim();
+    if (!cleanText) {
+      setSaranFeedback('Mohon tuliskan masukan atau saran terlebih dahulu.');
+      return;
+    }
+
+    setMutating(true);
+    setSaranFeedback('');
+    try {
+      const id = generateId('SRN');
+      const row = [
+        id,
+        formatTanggalHariIni(),
+        currentUser?.Nama_User || 'Orang Tua / Wali',
+        currentUser?.Nama_Anak || '-',
+        cleanText,
+        'Belum Dibaca',
+      ];
+      await postSpreadsheetAction({
+        sheet: 'Saran',
+        action: 'add',
+        row,
+      });
+      setNewSaranText('');
+      setSaranFeedback('Alhamdulillah, masukan Anda berhasil dikirim ke pengajar.');
+      await refreshLiveData();
+    } catch (err) {
+      setSaranFeedback(
+        err.message || 'Gagal mengirim masukan. Silakan coba lagi.'
+      );
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  /* Grouped Kurikulum by Bulan */
+  const kurikulumByMonth = useMemo(() => {
+    const map = {};
+    kurikulumList.forEach((item) => {
+      const bulanKey = item.Bulan.trim() || 'Lainnya';
+      if (!map[bulanKey]) map[bulanKey] = [];
+      map[bulanKey].push(item);
+    });
+    return Object.keys(map).map((bulan) => ({
+      bulan,
+      items: map[bulan],
+    }));
+  }, [kurikulumList]);
+
+  /* Filtered Progres based on Role */
+  const visibleProgres = useMemo(() => {
+    if (isWali) {
+      const targetAnak = (currentUser?.Nama_Anak || '').trim().toLowerCase();
+      return progresList.filter(
+        (item) => item.Nama_Anak.trim().toLowerCase() === targetAnak
+      );
+    }
+    if (selectedAnakFilter === 'Semua') return progresList;
+    return progresList.filter(
+      (item) =>
+        item.Nama_Anak.trim().toLowerCase() ===
+        selectedAnakFilter.trim().toLowerCase()
+    );
+  }, [isWali, currentUser, progresList, selectedAnakFilter]);
+
+  /* Filtered Saran based on Role */
+  const visibleSaran = useMemo(() => {
+    if (isWali) {
+      const targetAnak = (currentUser?.Nama_Anak || '').trim().toLowerCase();
+      const targetWali = (currentUser?.Nama_User || '').trim().toLowerCase();
+      return saranList.filter(
+        (item) =>
+          (targetAnak && item.Nama_Anak.trim().toLowerCase() === targetAnak) ||
+          (targetWali && item.Nama_Wali.trim().toLowerCase() === targetWali)
+      );
+    }
+    if (saranFilter === 'Belum Dibaca') {
+      return saranList.filter(
+        (s) => s.Status_Baca.toLowerCase() !== 'sudah dibaca'
+      );
+    }
+    if (saranFilter === 'Sudah Dibaca') {
+      return saranList.filter(
+        (s) => s.Status_Baca.toLowerCase() === 'sudah dibaca'
+      );
+    }
+    return saranList;
+  }, [isWali, currentUser, saranList, saranFilter]);
+
+  const unreadSaranCount = useMemo(
+    () =>
+      saranList.filter((s) => s.Status_Baca.toLowerCase() !== 'sudah dibaca')
+        .length,
+    [saranList]
+  );
+
+  /* Saktah Play */
   const quizStarCount = KUIS_SOAL_10.reduce(
     (sum, soal) => sum + (quizAnswers[soal.id] === soal.jawabanBenar ? 1 : 0),
     0
@@ -1169,7 +1156,168 @@ export default function App() {
     setQuizFinished(false);
   };
 
-  /* Render Top Header */
+  /* Session Splash While Checking AsyncStorage */
+  if (checkingSession) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar style="light" />
+        <View style={styles.splashContainer}>
+          <View style={styles.splashLogoWrap}>
+            <Image
+              source={LOGO_SAKTAH}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
+          </View>
+          <Text style={[styles.splashTitle, fonts.loraBold]}>
+            Saktah Tarbiyah
+          </Text>
+          <Text style={[styles.splashSub, fonts.sansRegular]}>
+            Memeriksa sesi masuk...
+          </Text>
+          <ActivityIndicator
+            size="large"
+            color={COLORS.forest}
+            style={{ marginTop: 18 }}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  /* Login Screen */
+  if (!currentUser) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar style="light" />
+        <KeyboardAvoidingView
+          style={styles.flexOne}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView
+            style={styles.scrollArea}
+            contentContainerStyle={[
+              styles.loginScrollContent,
+              { paddingTop: androidTopInset + 30 },
+            ]}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.responsiveColumn}>
+              <View style={styles.loginBrandHeader}>
+                <View style={styles.loginLogoCircle}>
+                  <Image
+                    source={LOGO_SAKTAH}
+                    style={styles.logoImage}
+                    resizeMode="contain"
+                  />
+                </View>
+                <Text style={[styles.loginTitle, fonts.loraBold]}>
+                  Saktah Tarbiyah
+                </Text>
+                <Text style={[styles.loginSubtitle, fonts.loraSemi]}>
+                  Ruang Tumbuh & Belajar yang Tenang
+                </Text>
+              </View>
+
+              <PaperCard variant="ivory" layerColor={COLORS.moss} showTape>
+                <Text style={[styles.loginCardHeading, fonts.loraBold]}>
+                  Masuk ke Jurnal Belajar
+                </Text>
+                <Text style={[styles.loginCardDesc, fonts.sansRegular]}>
+                  Masukkan Kode Masuk yang terdaftar untuk pengajar atau orang
+                  tua/wali murid.
+                </Text>
+
+                <Text style={[styles.inputLabel, fonts.sansBold]}>
+                  Kode Masuk
+                </Text>
+                <View style={styles.loginInputRow}>
+                  <Ionicons
+                    name="key-outline"
+                    size={19}
+                    color={COLORS.forest}
+                  />
+                  <TextInput
+                    style={[styles.loginTextInput, fonts.sansBold]}
+                    value={loginCode}
+                    onChangeText={(text) => {
+                      setLoginCode(text);
+                      if (loginError) setLoginError('');
+                    }}
+                    placeholder="Contoh: ADMIN-ANNISA atau WALI-AISYAH"
+                    placeholderTextColor={COLORS.textMuted}
+                    autoCapitalize="characters"
+                    returnKeyType="done"
+                    onSubmitEditing={handleLogin}
+                  />
+                </View>
+
+                {loginError ? (
+                  <View style={styles.errorBanner}>
+                    <Ionicons
+                      name="alert-circle-outline"
+                      size={17}
+                      color={COLORS.dangerText}
+                    />
+                    <Text style={[styles.errorBannerText, fonts.sansSemi]}>
+                      {loginError}
+                    </Text>
+                  </View>
+                ) : null}
+
+                <TouchableOpacity
+                  style={[
+                    styles.loginSubmitBtn,
+                    loginLoading && { opacity: 0.7 },
+                  ]}
+                  activeOpacity={0.82}
+                  disabled={loginLoading}
+                  onPress={handleLogin}
+                >
+                  {loginLoading ? (
+                    <ActivityIndicator size="small" color={COLORS.ivory} />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="log-in-outline"
+                        size={20}
+                        color={COLORS.ivory}
+                      />
+                      <Text style={[styles.loginSubmitText, fonts.sansBold]}>
+                        Masuk Sekarang
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </PaperCard>
+
+              <PaperCard variant="sage" layerColor={COLORS.forest}>
+                <View style={styles.loginInfoRow}>
+                  <Ionicons
+                    name="shield-checkmark-outline"
+                    size={20}
+                    color={COLORS.forest}
+                  />
+                  <View style={styles.loginInfoTextCol}>
+                    <Text style={[styles.loginInfoTitle, fonts.sansBold]}>
+                      Akses Sesuai Peran
+                    </Text>
+                    <Text style={[styles.loginInfoDesc, fonts.sansRegular]}>
+                      Pengajar/Admin dapat mengelola kurikulum, progres, dan kotak
+                      saran. Orang Tua/Wali melihat kurikulum, progres ananda,
+                      serta mengirim saran.
+                    </Text>
+                  </View>
+                </View>
+              </PaperCard>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
+  /* Authenticated UI Components */
   const renderTopBanner = () => {
     if (showTentang) {
       return (
@@ -1192,7 +1340,7 @@ export default function App() {
                 Tentang Saktah Tarbiyah
               </Text>
               <Text style={[styles.subHeaderSubtitle, fonts.sansRegular]}>
-                Filosofi Belajar, Jadwal & Konsultasi
+                Filosofi Belajar & Konsultasi
               </Text>
             </View>
             <View style={styles.subLogoFrame}>
@@ -1209,7 +1357,7 @@ export default function App() {
 
     if (activeTab === 'beranda') {
       return (
-        <View style={[styles.heroBanner, { paddingTop: androidTopInset + 16 }]}>
+        <View style={[styles.heroBanner, { paddingTop: androidTopInset + 14 }]}>
           <View style={styles.heroInner}>
             <View style={styles.heroTopRow}>
               <View style={styles.logoFrame}>
@@ -1224,31 +1372,47 @@ export default function App() {
                   Saktah Tarbiyah
                 </Text>
                 <Text style={[styles.heroTagline, fonts.loraSemi]}>
-                  Ruang Tumbuh & Belajar yang Tenang
+                  {isAdmin
+                    ? 'Panel Pengajar / Admin'
+                    : `Wali dari ${currentUser.Nama_Anak || 'Ananda'}`}
                 </Text>
               </View>
+
               <TouchableOpacity
-                style={styles.tentangHeaderBtn}
+                style={styles.logoutPillBtn}
                 activeOpacity={0.82}
-                onPress={() => {
-                  setShowTentang(true);
-                  scrollToTop();
-                }}
+                onPress={() => setLogoutModalVisible(true)}
               >
-                <Ionicons name="leaf-outline" size={15} color={COLORS.moss} />
-                <Text style={[styles.tentangHeaderBtnText, fonts.sansBold]}>
-                  Tentang
+                <Ionicons
+                  name="log-out-outline"
+                  size={15}
+                  color={COLORS.moss}
+                />
+                <Text style={[styles.logoutPillText, fonts.sansBold]}>
+                  Keluar
                 </Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.heroGreetingPaper}>
               <View style={styles.heroGreetingRow}>
-                <Feather name="feather" size={16} color={COLORS.goldSoft} />
-                <Text style={[styles.heroGreetingText, fonts.sansRegular]}>
-                  Jurnal pendampingan belajar TK & SD yang hangat untuk
-                  pengajar, orang tua, dan buah hati.
-                </Text>
+                <Ionicons
+                  name={isAdmin ? 'ribbon-outline' : 'heart-outline'}
+                  size={18}
+                  color={COLORS.goldSoft}
+                />
+                <View style={styles.flexOne}>
+                  <Text style={[styles.heroUserGreeting, fonts.sansBold]}>
+                    Assalamu’alaikum, {currentUser.Nama_User || currentUser.Kode_Masuk}
+                  </Text>
+                  <Text style={[styles.heroGreetingText, fonts.sansRegular]}>
+                    {isAdmin
+                      ? 'Terhubung real-time ke Google Sheets untuk mencatat kurikulum, progres murid, & kotak saran.'
+                      : `Pantau kurikulum belajar serta perkembangan ananda ${
+                          currentUser.Nama_Anak || ''
+                        } secara langsung.`}
+                  </Text>
+                </View>
               </View>
             </View>
           </View>
@@ -1258,16 +1422,25 @@ export default function App() {
 
     const headerMeta = {
       kurikulum: {
-        title: selectedMonth ? 'Detail Kurikulum Bulan' : 'Kurikulum Bulanan',
-        subtitle: selectedMonth
-          ? selectedMonth.kode
-          : 'Materi & Capaian Belajar Per Bulan',
+        title: selectedBulan ? `Kurikulum • ${selectedBulan}` : 'Kurikulum Bulanan',
+        subtitle: isAdmin
+          ? 'Kelola materi mingguan (Admin)'
+          : 'Daftar materi belajar (Mode Baca)',
         icon: 'layers-outline',
       },
-      absen: {
-        title: 'Kartu Absen Murid',
-        subtitle: 'Stempel 12 Pertemuan & Catatan Harian',
+      progres: {
+        title: isAdmin ? 'Progres & Absensi Murid' : 'Progres Belajar Ananda',
+        subtitle: isAdmin
+          ? 'Catat kehadiran & perkembangan'
+          : `Catatan khusus ${currentUser.Nama_Anak || 'Ananda'}`,
         icon: 'calendar-outline',
+      },
+      saran: {
+        title: isAdmin ? 'Kotak Masuk Saran' : 'Kotak Masukan & Saran',
+        subtitle: isAdmin
+          ? `${unreadSaranCount} pesan belum dibaca`
+          : 'Kirim pesan hangat untuk pengajar',
+        icon: 'chatbubble-ellipses-outline',
       },
       play: {
         title: 'Saktah Play',
@@ -1296,29 +1469,51 @@ export default function App() {
               {headerMeta.subtitle}
             </Text>
           </View>
-          {activeTab === 'play' ? (
-            <Animated.View
-              style={[
-                styles.headerStarPill,
-                { transform: [{ scale: starPulse }] },
-              ]}
-            >
-              <Ionicons name="star" size={14} color={COLORS.gold} />
-              <Text style={[styles.headerStarText, fonts.sansBold]}>
-                {quizStarCount}/10
-              </Text>
-            </Animated.View>
-          ) : (
-            <View style={styles.headerIconPill}>
-              <Ionicons
-                name={headerMeta.icon}
-                size={18}
-                color={COLORS.ivory}
-              />
-            </View>
-          )}
+
+          <TouchableOpacity
+            style={styles.headerRefreshBtn}
+            activeOpacity={0.8}
+            disabled={syncingData}
+            onPress={refreshLiveData}
+          >
+            {syncingData ? (
+              <ActivityIndicator size="small" color={COLORS.ivory} />
+            ) : (
+              <Ionicons name="refresh" size={18} color={COLORS.ivory} />
+            )}
+          </TouchableOpacity>
         </View>
       </View>
+    );
+  };
+
+  const renderSyncBanner = () => {
+    if (!syncError) return null;
+    return (
+      <PaperCard variant="ivory" layerColor={COLORS.dangerText}>
+        <View style={styles.syncErrorRow}>
+          <Ionicons
+            name="cloud-offline-outline"
+            size={20}
+            color={COLORS.dangerText}
+          />
+          <View style={styles.flexOne}>
+            <Text style={[styles.syncErrorTitle, fonts.sansBold]}>
+              Koneksi Google Sheets Terkendala
+            </Text>
+            <Text style={[styles.syncErrorDesc, fonts.sansRegular]}>
+              {syncError}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.syncRetryBtn}
+            activeOpacity={0.8}
+            onPress={refreshLiveData}
+          >
+            <Text style={[styles.syncRetryText, fonts.sansBold]}>Coba Lagi</Text>
+          </TouchableOpacity>
+        </View>
+      </PaperCard>
     );
   };
 
@@ -1326,171 +1521,200 @@ export default function App() {
   const renderBerandaTab = () => {
     const stages = SESI_TEMPLATES[sessionDuration];
     const completedStages = stages.filter((s) => checkedStages[s.id]).length;
-    const activeHadir = countHadir(activeStudent);
-    const totalKurikulumMateri = kurikulumList.reduce(
-      (sum, m) => sum + m.materiList.length,
-      0
-    );
-    const totalKurikulumDone = kurikulumList.reduce(
-      (sum, m) => sum + m.materiList.filter((x) => x.sudahDiajarkan).length,
-      0
-    );
 
     return (
       <View style={styles.tabBody}>
-        {/* Alur Sesi Mengajar Hari Ini */}
-        <View style={styles.sectionHeadingRow}>
-          <Text style={[styles.sectionTitle, fonts.loraBold]}>
-            Alur Sesi Mengajar Hari Ini
-          </Text>
-          <TouchableOpacity
-            style={styles.resetTextBtn}
-            activeOpacity={0.75}
-            onPress={resetSessionStages}
-          >
-            <Feather name="rotate-ccw" size={13} color={COLORS.forest} />
-            <Text style={[styles.resetTextLabel, fonts.sansBold]}>Reset</Text>
-          </TouchableOpacity>
-        </View>
-
-        <PaperCard variant="ivory" layerColor={COLORS.moss} showTape>
-          <View style={styles.durationSwitchRow}>
-            {[60, 90].map((minutes) => {
-              const active = sessionDuration === minutes;
-              return (
-                <TouchableOpacity
-                  key={minutes}
-                  style={[
-                    styles.durationBtn,
-                    active && styles.durationBtnActive,
-                  ]}
-                  activeOpacity={0.82}
-                  onPress={() => setSessionDuration(minutes)}
-                >
-                  <Feather
-                    name="clock"
-                    size={15}
-                    color={active ? COLORS.ivory : COLORS.forest}
-                  />
-                  <Text
-                    style={[
-                      styles.durationBtnText,
-                      fonts.sansBold,
-                      active && styles.durationBtnTextActive,
-                    ]}
-                  >
-                    {minutes} Menit
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <View style={styles.sessionProgressRow}>
-            <Text style={[styles.sessionProgressText, fonts.sansSemi]}>
-              Tahapan Selesai: {completedStages} / {stages.length}
-            </Text>
-            <View style={styles.sessionMiniTrack}>
-              <View
-                style={[
-                  styles.sessionMiniFill,
-                  { width: `${(completedStages / stages.length) * 100}%` },
-                ]}
-              />
+        {/* Status Sinkronisasi Real-Time */}
+        <PaperCard variant="sage" layerColor={COLORS.forest}>
+          <View style={styles.syncStripRow}>
+            <View style={styles.syncStripLeft}>
+              <View style={styles.liveDotRow}>
+                <View style={styles.liveDot} />
+                <Text style={[styles.microLabel, fonts.sansBold]}>
+                  SINKRONISASI REAL-TIME
+                </Text>
+              </View>
+              <Text style={[styles.syncStripTitle, fonts.loraBold]}>
+                {kurikulumList.length} Materi • {visibleProgres.length} Progres
+                {isAdmin ? ` • ${unreadSaranCount} Saran Baru` : ''}
+              </Text>
             </View>
+            <TouchableOpacity
+              style={styles.syncNowBtn}
+              activeOpacity={0.8}
+              disabled={syncingData}
+              onPress={refreshLiveData}
+            >
+              {syncingData ? (
+                <ActivityIndicator size="small" color={COLORS.ivory} />
+              ) : (
+                <>
+                  <Ionicons name="refresh" size={14} color={COLORS.ivory} />
+                  <Text style={[styles.syncNowText, fonts.sansBold]}>
+                    Segarkan
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
+        </PaperCard>
 
-          {stages.map((stage, idx) => {
-            const checked = Boolean(checkedStages[stage.id]);
-            return (
+        {isAdmin && (
+          <>
+            <View style={styles.sectionHeadingRow}>
+              <Text style={[styles.sectionTitle, fonts.loraBold]}>
+                Alur Sesi Mengajar Hari Ini
+              </Text>
               <TouchableOpacity
-                key={stage.id}
-                style={[
-                  styles.stageItem,
-                  checked && styles.stageItemChecked,
-                  idx === stages.length - 1 && { marginBottom: 0 },
-                ]}
-                activeOpacity={0.8}
-                onPress={() => toggleStageChecked(stage.id)}
+                style={styles.resetTextBtn}
+                activeOpacity={0.75}
+                onPress={() =>
+                  setCheckedStages({
+                    ice: false,
+                    inti: false,
+                    jeda: false,
+                    eval: false,
+                  })
+                }
               >
+                <Feather name="rotate-ccw" size={13} color={COLORS.forest} />
+                <Text style={[styles.resetTextLabel, fonts.sansBold]}>
+                  Reset
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <PaperCard variant="ivory" layerColor={COLORS.moss} showTape>
+              <View style={styles.durationSwitchRow}>
+                {[60, 90].map((minutes) => {
+                  const active = sessionDuration === minutes;
+                  return (
+                    <TouchableOpacity
+                      key={minutes}
+                      style={[
+                        styles.durationBtn,
+                        active && styles.durationBtnActive,
+                      ]}
+                      activeOpacity={0.82}
+                      onPress={() => setSessionDuration(minutes)}
+                    >
+                      <Feather
+                        name="clock"
+                        size={15}
+                        color={active ? COLORS.ivory : COLORS.forest}
+                      />
+                      <Text
+                        style={[
+                          styles.durationBtnText,
+                          fonts.sansBold,
+                          active && styles.durationBtnTextActive,
+                        ]}
+                      >
+                        {minutes} Menit
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={[styles.sessionProgressText, fonts.sansSemi]}>
+                Tahapan Selesai: {completedStages} / {stages.length}
+              </Text>
+              <View style={styles.sessionMiniTrack}>
                 <View
                   style={[
-                    styles.stageCheckbox,
-                    checked && styles.stageCheckboxChecked,
+                    styles.sessionMiniFill,
+                    { width: `${(completedStages / stages.length) * 100}%` },
                   ]}
-                >
-                  {checked ? (
-                    <Feather name="check" size={15} color={COLORS.ivory} />
-                  ) : (
-                    <Text style={[styles.stageIndexText, fonts.sansBold]}>
-                      {idx + 1}
-                    </Text>
-                  )}
-                </View>
+                />
+              </View>
 
-                <View style={styles.stageContentCol}>
-                  <View style={styles.stageTopLine}>
-                    <Text
+              {stages.map((stage, idx) => {
+                const checked = Boolean(checkedStages[stage.id]);
+                return (
+                  <TouchableOpacity
+                    key={stage.id}
+                    style={[
+                      styles.stageItem,
+                      checked && styles.stageItemChecked,
+                      idx === stages.length - 1 && { marginBottom: 0 },
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={() =>
+                      setCheckedStages((prev) => ({
+                        ...prev,
+                        [stage.id]: !prev[stage.id],
+                      }))
+                    }
+                  >
+                    <View
                       style={[
-                        styles.stageTitle,
-                        fonts.sansBold,
-                        checked && styles.stageTitleDone,
+                        styles.stageCheckbox,
+                        checked && styles.stageCheckboxChecked,
                       ]}
                     >
-                      {stage.judul}
-                    </Text>
-                    <View style={styles.stageDurationBadge}>
-                      <Text style={[styles.stageDurationText, fonts.sansBold]}>
-                        {stage.durasi}
+                      {checked ? (
+                        <Feather name="check" size={15} color={COLORS.ivory} />
+                      ) : (
+                        <Text style={[styles.stageIndexText, fonts.sansBold]}>
+                          {idx + 1}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={styles.stageContentCol}>
+                      <View style={styles.stageTopLine}>
+                        <Text style={[styles.stageTitle, fonts.sansBold]}>
+                          {stage.judul}
+                        </Text>
+                        <View style={styles.stageDurationBadge}>
+                          <Text style={[styles.stageDurationText, fonts.sansBold]}>
+                            {stage.durasi}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.stageDesc, fonts.sansRegular]}>
+                        {stage.deskripsi}
                       </Text>
                     </View>
-                  </View>
-                  <Text style={[styles.stageDesc, fonts.sansRegular]}>
-                    {stage.deskripsi}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </PaperCard>
+                  </TouchableOpacity>
+                );
+              })}
+            </PaperCard>
+          </>
+        )}
 
         {/* Pintasan Cepat */}
         <Text style={[styles.sectionTitle, fonts.loraBold]}>
-          Pintasan Cepat Mengajar
+          Menu Utama
         </Text>
-
-        <TouchableOpacity
-          activeOpacity={0.84}
-          onPress={() => navigateTab('kurikulum')}
-        >
-          <PaperCard variant="sage" layerColor={COLORS.forest}>
-            <View style={styles.quickCardRow}>
-              <View style={styles.quickIconBadge}>
-                <Ionicons name="layers-outline" size={22} color={COLORS.ivory} />
-              </View>
-              <View style={styles.quickTextCol}>
-                <Text style={[styles.quickTitle, fonts.loraBold]}>
-                  Kurikulum Bulanan
-                </Text>
-                <Text style={[styles.quickSub, fonts.sansSemi]}>
-                  {kurikulumList.length} bulan terstruktur • {totalKurikulumDone}/
-                  {totalKurikulumMateri} materi diajarkan
-                </Text>
-              </View>
-              <Ionicons
-                name="chevron-forward"
-                size={20}
-                color={COLORS.forest}
-              />
-            </View>
-          </PaperCard>
-        </TouchableOpacity>
 
         <View style={styles.shortcutDualRow}>
           <TouchableOpacity
             style={styles.shortcutHalfWrap}
             activeOpacity={0.84}
-            onPress={() => navigateTab('absen')}
+            onPress={() => navigateTab('kurikulum')}
+          >
+            <PaperCard variant="ivory" layerColor={COLORS.sageDark}>
+              <View style={styles.quickSmallIcon}>
+                <Ionicons
+                  name="layers-outline"
+                  size={20}
+                  color={COLORS.forest}
+                />
+              </View>
+              <Text style={[styles.quickSmallTitle, fonts.loraBold]}>
+                Kurikulum
+              </Text>
+              <Text style={[styles.quickSmallDesc, fonts.sansRegular]}>
+                {kurikulumByMonth.length} bulan • {kurikulumList.length} materi
+              </Text>
+            </PaperCard>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.shortcutHalfWrap}
+            activeOpacity={0.84}
+            onPress={() => navigateTab('progres')}
           >
             <PaperCard variant="ivory" layerColor={COLORS.sageDark}>
               <View style={styles.quickSmallIcon}>
@@ -1501,10 +1725,36 @@ export default function App() {
                 />
               </View>
               <Text style={[styles.quickSmallTitle, fonts.loraBold]}>
-                Kartu Absen
+                Progres
               </Text>
               <Text style={[styles.quickSmallDesc, fonts.sansRegular]}>
-                {activeStudent.nama.split(' ')[0]} • {activeHadir}/12 Hadir
+                {visibleProgres.length} catatan tersimpan
+              </Text>
+            </PaperCard>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.shortcutDualRow}>
+          <TouchableOpacity
+            style={styles.shortcutHalfWrap}
+            activeOpacity={0.84}
+            onPress={() => navigateTab('saran')}
+          >
+            <PaperCard variant="sage" layerColor={COLORS.forest}>
+              <View style={styles.quickSmallIcon}>
+                <Ionicons
+                  name="chatbubble-ellipses-outline"
+                  size={20}
+                  color={COLORS.forest}
+                />
+              </View>
+              <Text style={[styles.quickSmallTitle, fonts.loraBold]}>
+                {isAdmin ? 'Kotak Saran' : 'Kirim Saran'}
+              </Text>
+              <Text style={[styles.quickSmallDesc, fonts.sansRegular]}>
+                {isAdmin
+                  ? `${unreadSaranCount} belum dibaca`
+                  : 'Masukan untuk pengajar'}
               </Text>
             </PaperCard>
           </TouchableOpacity>
@@ -1514,7 +1764,7 @@ export default function App() {
             activeOpacity={0.84}
             onPress={() => navigateTab('play')}
           >
-            <PaperCard variant="ivory" layerColor={COLORS.sageDark}>
+            <PaperCard variant="sage" layerColor={COLORS.forest}>
               <View style={styles.quickSmallIcon}>
                 <Ionicons
                   name="sparkles-outline"
@@ -1532,7 +1782,7 @@ export default function App() {
           </TouchableOpacity>
         </View>
 
-        {/* Kartu Tentang Saktah Tarbiyah */}
+        {/* Tentang & Logout */}
         <TouchableOpacity
           activeOpacity={0.84}
           onPress={() => {
@@ -1554,8 +1804,7 @@ export default function App() {
                   Tentang Saktah Tarbiyah
                 </Text>
                 <Text style={[styles.aboutShortcutDesc, fonts.sansRegular]}>
-                  Kenali filosofi belajar tanpa tergesa, jadwal kelas privat, &
-                  konsultasi pendaftaran.
+                  Filosofi belajar tenang, jadwal kelas privat, & konsultasi WA.
                 </Text>
               </View>
               <Ionicons name="arrow-forward" size={20} color={COLORS.ivory} />
@@ -1566,376 +1815,201 @@ export default function App() {
     );
   };
 
-  /* Halaman Tentang (dibuka dari Header / Kartu Tentang di Beranda) */
-  const renderTentangPage = () => {
-    return (
-      <View style={styles.tabBody}>
+  /* Halaman Tentang */
+  const renderTentangPage = () => (
+    <View style={styles.tabBody}>
+      <TouchableOpacity
+        style={styles.backToListBtn}
+        activeOpacity={0.82}
+        onPress={() => {
+          setShowTentang(false);
+          scrollToTop();
+        }}
+      >
+        <Ionicons name="arrow-back" size={17} color={COLORS.forest} />
+        <Text style={[styles.backToListText, fonts.sansBold]}>
+          ← Kembali ke Beranda
+        </Text>
+      </TouchableOpacity>
+
+      <PaperCard variant="ivory" layerColor={COLORS.moss} showTape>
+        <View style={styles.aboutHeroRow}>
+          <View style={styles.aboutLogoCircle}>
+            <Image
+              source={LOGO_SAKTAH}
+              style={styles.aboutLogoImg}
+              resizeMode="contain"
+            />
+          </View>
+          <View style={styles.aboutHeroCol}>
+            <Text style={[styles.aboutTitle, fonts.loraBold]}>
+              Saktah Tarbiyah
+            </Text>
+            <Text style={[styles.aboutSub, fonts.sansSemi]}>
+              Ruang Tumbuh & Belajar yang Tenang
+            </Text>
+          </View>
+        </View>
+
+        <Text style={[styles.aboutQuote, fonts.loraSemi]}>
+          “Seperti makna saktah—jeda sejenak untuk mengambil napas dengan tenang—kami
+          mendampingi anak TK & SD bertumbuh sesuai ritme terbaiknya, hangat,
+          sabar, dan beradab.”
+        </Text>
+      </PaperCard>
+
+      <PaperCard variant="forest" layerColor={COLORS.moss}>
+        <Text style={[styles.consultTitle, fonts.loraBold]}>
+          Konsultasi Kelas Privat
+        </Text>
+        <Text style={[styles.consultDesc, fonts.sansRegular]}>
+          Tersedia sesi 60 & 90 menit (Senin–Sabtu). Hubungi admin Saktah Tarbiyah
+          untuk informasi jadwal atau penyesuaian program ananda.
+        </Text>
         <TouchableOpacity
-          style={styles.backToListBtn}
+          style={styles.consultBtn}
           activeOpacity={0.82}
-          onPress={() => {
-            setShowTentang(false);
-            scrollToTop();
-          }}
+          onPress={() =>
+            openWhatsAppUrl(
+              'Assalamu’alaikum Kak Admin Saktah Tarbiyah, saya ingin berkonsultasi mengenai kelas belajar anak.'
+            )
+          }
         >
-          <Ionicons name="arrow-back" size={17} color={COLORS.forest} />
-          <Text style={[styles.backToListText, fonts.sansBold]}>
-            ← Kembali ke Beranda
+          <Ionicons name="logo-whatsapp" size={20} color={COLORS.forest} />
+          <Text style={[styles.consultBtnText, fonts.sansBold]}>
+            Hubungi WhatsApp (081802899219)
           </Text>
         </TouchableOpacity>
+      </PaperCard>
+    </View>
+  );
 
-        <PaperCard variant="ivory" layerColor={COLORS.moss} showTape>
-          <View style={styles.aboutHeroRow}>
-            <View style={styles.aboutLogoCircle}>
-              <Image
-                source={LOGO_SAKTAH}
-                style={styles.aboutLogoImg}
-                resizeMode="contain"
-              />
-            </View>
-            <View style={styles.aboutHeroCol}>
-              <Text style={[styles.aboutTitle, fonts.loraBold]}>
-                Saktah Tarbiyah
-              </Text>
-              <Text style={[styles.aboutSub, fonts.sansSemi]}>
-                Ruang Tumbuh & Belajar yang Tenang
-              </Text>
-            </View>
-          </View>
-
-          <Text style={[styles.aboutQuote, fonts.loraSemi]}>
-            “Seperti makna saktah—jeda sejenak untuk mengambil napas dengan
-            tenang—kami mendampingi anak TK & SD bertumbuh sesuai ritme terbaiknya,
-            hangat, sabar, dan beradab.”
-          </Text>
-        </PaperCard>
-
-        <Text style={[styles.sectionTitle, fonts.loraBold]}>
-          3 Pilar Pendampingan
-        </Text>
-        <PaperCard variant="sage" layerColor={COLORS.forest}>
-          <View style={styles.philosophyRow}>
-            <View style={styles.philosophyIcon}>
-              <Feather name="edit-3" size={18} color={COLORS.forest} />
-            </View>
-            <View style={styles.philosophyTextCol}>
-              <Text style={[styles.philosophyTitle, fonts.loraBold]}>
-                Calistung & Tematik TK/SD
-              </Text>
-              <Text style={[styles.philosophyDesc, fonts.sansRegular]}>
-                Membaca suku kata, menulis rapi, serta berhitung benda konkret
-                tanpa tekanan.
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.philosophyRow}>
-            <View style={styles.philosophyIcon}>
-              <Feather name="book-open" size={18} color={COLORS.forest} />
-            </View>
-            <View style={styles.philosophyTextCol}>
-              <Text style={[styles.philosophyTitle, fonts.loraBold]}>
-                Mengaji Iqra & Tahsin Anak
-              </Text>
-              <Text style={[styles.philosophyDesc, fonts.sansRegular]}>
-                Makhraj huruf hijaiyah, panjang-pendek bacaan, serta hafalan surat
-                pendek pilihan.
-              </Text>
-            </View>
-          </View>
-
-          <View style={[styles.philosophyRow, { marginBottom: 0 }]}>
-            <View style={styles.philosophyIcon}>
-              <Ionicons name="heart-outline" size={19} color={COLORS.forest} />
-            </View>
-            <View style={styles.philosophyTextCol}>
-              <Text style={[styles.philosophyTitle, fonts.loraBold]}>
-                Adab & Doa Harian
-              </Text>
-              <Text style={[styles.philosophyDesc, fonts.sansRegular]}>
-                Pembiasaan tiga kata ajaib (tolong, maaf, terima kasih) serta doa
-                sehari-hari.
-              </Text>
-            </View>
-          </View>
-        </PaperCard>
-
-        <PaperCard variant="forest" layerColor={COLORS.moss}>
-          <Text style={[styles.consultTitle, fonts.loraBold]}>
-            Konsultasi Kelas Privat
-          </Text>
-          <Text style={[styles.consultDesc, fonts.sansRegular]}>
-            Tersedia pilihan sesi 60 menit & 90 menit (Senin–Sabtu). Hubungi
-            admin kami untuk mencocokkan jadwal belajar ananda.
-          </Text>
-          <TouchableOpacity
-            style={styles.consultBtn}
-            activeOpacity={0.82}
-            onPress={() =>
-              openWhatsAppUrl(
-                'Assalamu’alaikum Kak Admin Saktah Tarbiyah, saya ingin berkonsultasi mengenai pendaftaran & jadwal belajar anak.'
-              )
-            }
-          >
-            <Ionicons name="logo-whatsapp" size={20} color={COLORS.forest} />
-            <Text style={[styles.consultBtnText, fonts.sansBold]}>
-              Konsultasi WhatsApp (081802899219)
-            </Text>
-          </TouchableOpacity>
-        </PaperCard>
-      </View>
-    );
-  };
-
-  /* Tab 2: Kurikulum (Level 1 Daftar Bulan <-> Level 2 Detail Bulan) */
+  /* Tab 2: Kurikulum (Admin: CRUD, Wali: Read-Only) */
   const renderKurikulumTab = () => {
-    if (selectedMonth) {
-      const { total, done, percent } = getMonthProgress(selectedMonth);
+    if (selectedBulan) {
+      const monthItems = kurikulumList.filter(
+        (m) => (m.Bulan.trim() || 'Lainnya') === selectedBulan
+      );
 
       return (
         <View style={styles.tabBody}>
-          {/* Tombol Kembali ke Level 1 */}
-          <TouchableOpacity
-            style={styles.backToListBtn}
-            activeOpacity={0.82}
-            onPress={handleBackToMonths}
-          >
-            <Ionicons name="arrow-back" size={17} color={COLORS.forest} />
-            <Text style={[styles.backToListText, fonts.sansBold]}>
-              ← Kembali ke Daftar Bulan
-            </Text>
-          </TouchableOpacity>
-
-          {/* Header Bulan Terpilih */}
-          <PaperCard variant="sage" layerColor={COLORS.forest} showTape>
-            <View style={styles.monthDetailHeaderRow}>
-              <View style={styles.monthDetailTitleCol}>
-                <Text style={[styles.microLabel, fonts.sansBold]}>
-                  DETAIL PROGRAM BULANAN
-                </Text>
-                <Text style={[styles.monthDetailTitle, fonts.loraBold]}>
-                  {selectedMonth.judul}
-                </Text>
-              </View>
-              <View style={styles.monthPctPill}>
-                <Text style={[styles.monthPctPillText, fonts.sansBold]}>
-                  {percent}%
-                </Text>
-              </View>
-            </View>
-
-            <Text style={[styles.progressLabelLine, fonts.sansSemi]}>
-              {done} dari {total} materi sudah diajarkan
-            </Text>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${percent}%` }]} />
-            </View>
-          </PaperCard>
-
-          {/* Kartu Target Capaian Bulan Ini (Editable) */}
-          <PaperCard variant="ivory" layerColor={COLORS.moss}>
-            <View style={styles.cardTitleIconRow}>
-              <Feather name="target" size={18} color={COLORS.forest} />
-              <Text style={[styles.cardHeading, fonts.loraBold, { marginBottom: 0 }]}>
-                Target Capaian Bulan Ini
-              </Text>
-            </View>
-            <Text style={[styles.cardSubtext, fonts.sansRegular, { marginTop: 4 }]}>
-              Ketuk teks di bawah untuk menyesuaikan target capaian sesuai
-              kebutuhan murid.
-            </Text>
-            <TextInput
-              style={[styles.targetEditInput, fonts.sansRegular]}
-              value={selectedMonth.targetCapaian}
-              onChangeText={(text) =>
-                updateSelectedMonthField('targetCapaian', text)
-              }
-              placeholder="Tulis target capaian bulan ini..."
-              placeholderTextColor={COLORS.textMuted}
-              multiline
-              textAlignVertical="top"
-            />
-          </PaperCard>
-
-          {/* Daftar Materi & Aktivitas Pekan 1-4 + Tambah Materi */}
           <View style={styles.sectionHeadingRow}>
-            <Text style={[styles.sectionTitle, fonts.loraBold]}>
-              Materi & Aktivitas Pekan 1–4
-            </Text>
             <TouchableOpacity
-              style={styles.addSmallBtn}
+              style={styles.backToListBtn}
               activeOpacity={0.82}
-              onPress={handleOpenAddMateri}
+              onPress={() => {
+                setSelectedBulan(null);
+                scrollToTop();
+              }}
             >
-              <Feather name="plus" size={15} color={COLORS.ivory} />
-              <Text style={[styles.addSmallBtnText, fonts.sansBold]}>
-                Tambah Materi
+              <Ionicons name="arrow-back" size={17} color={COLORS.forest} />
+              <Text style={[styles.backToListText, fonts.sansBold]}>
+                ← Daftar Bulan
               </Text>
             </TouchableOpacity>
+
+            {isAdmin && (
+              <TouchableOpacity
+                style={styles.addSmallBtn}
+                activeOpacity={0.82}
+                onPress={() => openAddKurikulum(selectedBulan)}
+              >
+                <Feather name="plus" size={15} color={COLORS.ivory} />
+                <Text style={[styles.addSmallBtnText, fonts.sansBold]}>
+                  Tambah Materi
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
-          {selectedMonth.materiList.map((mat) => {
-            const doneStatus = mat.sudahDiajarkan;
-            return (
+          <PaperCard variant="sage" layerColor={COLORS.forest} showTape>
+            <Text style={[styles.microLabel, fonts.sansBold]}>
+              {isWali ? 'KURIKULUM (MODE BACA)' : 'KELOLA KURIKULUM'}
+            </Text>
+            <Text style={[styles.monthDetailTitle, fonts.loraBold]}>
+              {selectedBulan}
+            </Text>
+            <Text style={[styles.cardSubtext, fonts.sansRegular, { marginBottom: 0 }]}>
+              Terdapat {monthItems.length} materi terjadwal pada periode ini.
+            </Text>
+          </PaperCard>
+
+          {monthItems.length === 0 ? (
+            <PaperCard variant="ivory" layerColor={COLORS.sageDark}>
+              <Text style={[styles.emptyStateText, fonts.sansRegular]}>
+                Belum ada materi untuk {selectedBulan}.
+              </Text>
+            </PaperCard>
+          ) : (
+            monthItems.map((item) => (
               <PaperCard
-                key={mat.id}
-                variant={doneStatus ? 'sage' : 'ivory'}
-                layerColor={doneStatus ? COLORS.forest : COLORS.sageDark}
+                key={item.ID || `${item.Bulan}-${item.Minggu}-${item.Judul_Materi}`}
+                variant="ivory"
+                layerColor={COLORS.moss}
               >
                 <View style={styles.materiTopRow}>
                   <View style={styles.pekanBadge}>
                     <Text style={[styles.pekanBadgeText, fonts.sansBold]}>
-                      {mat.pekan}
+                      {item.Minggu || 'Minggu'}
                     </Text>
                   </View>
-                  <View
-                    style={[
-                      styles.materiStatusTag,
-                      doneStatus
-                        ? styles.materiStatusTagDone
-                        : styles.materiStatusTagPending,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.materiStatusTagText,
-                        fonts.sansBold,
-                        doneStatus && { color: COLORS.ivory },
-                      ]}
-                    >
-                      {doneStatus ? 'Sudah Diajarkan' : 'Belum Diajarkan'}
+                  {item.ID ? (
+                    <Text style={[styles.idTinyText, fonts.sansSemi]}>
+                      {item.ID}
                     </Text>
-                  </View>
+                  ) : null}
                 </View>
 
                 <Text style={[styles.materiJudul, fonts.loraBold]}>
-                  {mat.judul}
+                  {item.Judul_Materi}
                 </Text>
                 <Text style={[styles.materiDesc, fonts.sansRegular]}>
-                  {mat.deskripsi}
+                  {item.Deskripsi || '-'}
                 </Text>
 
-                <TouchableOpacity
-                  style={[
-                    styles.materiCheckBtn,
-                    doneStatus && styles.materiCheckBtnActive,
-                  ]}
-                  activeOpacity={0.8}
-                  onPress={() => toggleMateriDone(mat.id)}
-                >
-                  <Ionicons
-                    name={doneStatus ? 'checkmark-circle' : 'ellipse-outline'}
-                    size={18}
-                    color={doneStatus ? COLORS.ivory : COLORS.forest}
-                  />
-                  <Text
-                    style={[
-                      styles.materiCheckBtnText,
-                      fonts.sansBold,
-                      doneStatus && styles.materiCheckBtnTextActive,
-                    ]}
-                  >
-                    {doneStatus
-                      ? 'Sudah Diajarkan ✓'
-                      : 'Tandai Sudah Diajarkan'}
-                  </Text>
-                </TouchableOpacity>
-              </PaperCard>
-            );
-          })}
-
-          {/* Catatan Capaian Anak Bulan Ini + Predikat + Bagikan Rapor WA */}
-          <PaperCard variant="ivory" layerColor={COLORS.moss} showTape>
-            <View style={styles.cardTitleIconRow}>
-              <Feather name="award" size={19} color={COLORS.forest} />
-              <Text style={[styles.cardHeading, fonts.loraBold, { marginBottom: 0 }]}>
-                Catatan Capaian Anak Bulan Ini
-              </Text>
-            </View>
-
-            <Text style={[styles.inputLabel, fonts.sansBold, { marginTop: 12 }]}>
-              Pilih Predikat Capaian
-            </Text>
-            <View style={styles.predikatCol}>
-              {PREDIKAT_OPTIONS.map((pred) => {
-                const active = selectedMonth.predikat === pred;
-                return (
-                  <TouchableOpacity
-                    key={pred}
-                    style={[
-                      styles.predikatBtn,
-                      active && styles.predikatBtnActive,
-                    ]}
-                    activeOpacity={0.82}
-                    onPress={() => updateSelectedMonthField('predikat', pred)}
-                  >
-                    <Ionicons
-                      name={active ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={18}
-                      color={active ? COLORS.ivory : COLORS.forest}
-                    />
-                    <Text
-                      style={[
-                        styles.predikatBtnText,
-                        fonts.sansBold,
-                        active && styles.predikatBtnTextActive,
-                      ]}
+                {isAdmin && (
+                  <View style={styles.adminActionRow}>
+                    <TouchableOpacity
+                      style={styles.adminEditBtn}
+                      activeOpacity={0.8}
+                      onPress={() => openEditKurikulum(item)}
                     >
-                      {pred}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+                      <Feather name="edit-3" size={15} color={COLORS.forest} />
+                      <Text style={[styles.adminEditBtnText, fonts.sansBold]}>
+                        Edit
+                      </Text>
+                    </TouchableOpacity>
 
-            <Text style={[styles.inputLabel, fonts.sansBold]}>
-              Catatan Pengajar untuk Orang Tua
-            </Text>
-            <TextInput
-              style={[styles.noteTextInput, fonts.sansRegular]}
-              value={selectedMonth.catatanBulanan}
-              onChangeText={(text) =>
-                updateSelectedMonthField('catatanBulanan', text)
-              }
-              placeholder="Tuliskan perkembangan sikap, fokus, dan kemajuan belajar ananda bulan ini..."
-              placeholderTextColor={COLORS.textMuted}
-              multiline
-              textAlignVertical="top"
-            />
-
-            <TouchableOpacity
-              style={[styles.waPrimaryBtn, { marginTop: 14 }]}
-              activeOpacity={0.82}
-              onPress={handleSendMonthlyReport}
-            >
-              <Ionicons name="logo-whatsapp" size={20} color={COLORS.ivory} />
-              <Text style={[styles.waPrimaryBtnText, fonts.sansBold]}>
-                Bagikan Rapor Bulanan ke WhatsApp
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.waPreviewBtn}
-              activeOpacity={0.82}
-              onPress={() =>
-                setWaPreviewModal({
-                  visible: true,
-                  title: 'Pratinjau Rapor Bulanan',
-                  text: buildWhatsAppMonthlyReport(selectedMonth, activeStudent),
-                })
-              }
-            >
-              <Ionicons name="eye-outline" size={18} color={COLORS.forest} />
-              <Text style={[styles.waPreviewBtnText, fonts.sansBold]}>
-                Pratinjau Rapor Bulanan
-              </Text>
-            </TouchableOpacity>
-          </PaperCard>
+                    <TouchableOpacity
+                      style={styles.adminDeleteBtn}
+                      activeOpacity={0.8}
+                      onPress={() =>
+                        setDeleteConfirmModal({
+                          visible: true,
+                          sheet: 'Kurikulum',
+                          id: item.ID,
+                          label: item.Judul_Materi,
+                        })
+                      }
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={15}
+                        color={COLORS.dangerText}
+                      />
+                      <Text style={[styles.adminDeleteBtnText, fonts.sansBold]}>
+                        Hapus
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </PaperCard>
+            ))
+          )}
         </View>
       );
     }
 
-    /* Level 1: Daftar Bulan */
     return (
       <View style={styles.tabBody}>
         <PaperCard variant="sage" layerColor={COLORS.forest} showTape>
@@ -1943,13 +2017,14 @@ export default function App() {
             <Ionicons name="layers-outline" size={22} color={COLORS.forest} />
             <View style={styles.playIntroTextCol}>
               <Text style={[styles.cardHeading, fonts.loraBold]}>
-                Peta Kurikulum & Capaian Per Bulan
+                Kurikulum Belajar Saktah Tarbiyah
               </Text>
               <Text
                 style={[styles.cardSubtext, fonts.sansRegular, { marginBottom: 0 }]}
               >
-                Ketuk kartu bulan untuk membuka target capaian, ceklis materi
-                pekanan, dan rapor bulanan.
+                {isAdmin
+                  ? 'Ketuk kartu bulan untuk melihat, mengedit, atau menghapus materi mingguan.'
+                  : 'Ketuk kartu bulan untuk melihat rencana materi belajar ananda (Mode Baca).'}
               </Text>
             </View>
           </View>
@@ -1957,27 +2032,38 @@ export default function App() {
 
         <View style={styles.sectionHeadingRow}>
           <Text style={[styles.sectionTitle, fonts.loraBold]}>
-            Daftar Bulan ({kurikulumList.length})
+            Daftar Bulan ({kurikulumByMonth.length})
           </Text>
-          <TouchableOpacity
-            style={styles.addSmallBtn}
-            activeOpacity={0.82}
-            onPress={handleOpenAddMonth}
-          >
-            <Feather name="plus" size={15} color={COLORS.ivory} />
-            <Text style={[styles.addSmallBtnText, fonts.sansBold]}>
-              Tambah Bulan Baru
-            </Text>
-          </TouchableOpacity>
+          {isAdmin && (
+            <TouchableOpacity
+              style={styles.addSmallBtn}
+              activeOpacity={0.82}
+              onPress={() => openAddKurikulum('')}
+            >
+              <Feather name="plus" size={15} color={COLORS.ivory} />
+              <Text style={[styles.addSmallBtnText, fonts.sansBold]}>
+                Tambah Materi
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {kurikulumList.map((month, idx) => {
-          const { total, done, percent } = getMonthProgress(month);
-          return (
+        {kurikulumByMonth.length === 0 ? (
+          <PaperCard variant="ivory" layerColor={COLORS.sageDark}>
+            <Text style={[styles.emptyStateText, fonts.sansRegular]}>
+              Belum ada data kurikulum dari Google Sheets.
+              {isAdmin ? ' Tekan "Tambah Materi" untuk memulai.' : ''}
+            </Text>
+          </PaperCard>
+        ) : (
+          kurikulumByMonth.map((group, idx) => (
             <TouchableOpacity
-              key={month.id}
+              key={group.bulan}
               activeOpacity={0.84}
-              onPress={() => handleOpenMonthDetail(month.id)}
+              onPress={() => {
+                setSelectedBulan(group.bulan);
+                scrollToTop();
+              }}
             >
               <PaperCard
                 variant={idx % 2 === 0 ? 'ivory' : 'sage'}
@@ -1986,39 +2072,12 @@ export default function App() {
                 <View style={styles.monthCardTopRow}>
                   <View style={styles.monthCodePill}>
                     <Text style={[styles.monthCodeText, fonts.sansBold]}>
-                      {month.kode.toUpperCase()}
-                    </Text>
-                  </View>
-                  <View style={styles.monthStatsChip}>
-                    <Text style={[styles.monthStatsText, fonts.sansBold]}>
-                      {done}/{total} Materi • {percent}%
-                    </Text>
-                  </View>
-                </View>
-
-                <Text style={[styles.monthCardTitle, fonts.loraBold]}>
-                  {month.judul}
-                </Text>
-                <Text style={[styles.monthCardTarget, fonts.sansRegular]}>
-                  {month.targetCapaian}
-                </Text>
-
-                <View style={styles.progressTrack}>
-                  <View
-                    style={[styles.progressFill, { width: `${percent}%` }]}
-                  />
-                </View>
-
-                <View style={styles.monthCardFooter}>
-                  <View style={styles.predikatSmallBadge}>
-                    <Feather name="award" size={13} color={COLORS.forest} />
-                    <Text style={[styles.predikatSmallText, fonts.sansBold]}>
-                      {month.predikat}
+                      {group.items.length} MATERI
                     </Text>
                   </View>
                   <View style={styles.monthOpenCue}>
                     <Text style={[styles.monthOpenCueText, fonts.sansBold]}>
-                      Buka Pekan 1–4
+                      Buka Detail
                     </Text>
                     <Ionicons
                       name="arrow-forward"
@@ -2027,97 +2086,45 @@ export default function App() {
                     />
                   </View>
                 </View>
+
+                <Text style={[styles.monthCardTitle, fonts.loraBold]}>
+                  {group.bulan}
+                </Text>
+
+                {group.items.slice(0, 2).map((sub) => (
+                  <View key={sub.ID || sub.Judul_Materi} style={styles.previewRow}>
+                    <Ionicons
+                      name="checkmark-circle-outline"
+                      size={14}
+                      color={COLORS.forest}
+                    />
+                    <Text style={[styles.previewRowText, fonts.sansRegular]}>
+                      {sub.Minggu}: {sub.Judul_Materi}
+                    </Text>
+                  </View>
+                ))}
               </PaperCard>
             </TouchableOpacity>
-          );
-        })}
+          ))
+        )}
       </View>
     );
   };
 
-  /* Tab 3: Kartu Absen */
-  const renderKartuAbsenTab = () => {
-    const totalHadir = countHadir(activeStudent);
-    const pct = Math.round((totalHadir / 12) * 100);
+  /* Tab 3: Progres (Admin: CRUD semua murid, Wali: Read-Only Nama_Anak) */
+  const renderProgresTab = () => {
+    const hadirTotal = visibleProgres.filter(
+      (p) => p.Status_Hadir.toLowerCase() === 'hadir'
+    ).length;
+    const progressTarget = 12;
+    const progressPct = Math.min(
+      100,
+      Math.round((hadirTotal / progressTarget) * 100)
+    );
 
     return (
       <View style={styles.tabBody}>
-        <View style={styles.sectionHeadingRow}>
-          <Text style={[styles.sectionTitle, fonts.loraBold]}>
-            Daftar Murid
-          </Text>
-          <TouchableOpacity
-            style={styles.addSmallBtn}
-            activeOpacity={0.82}
-            onPress={handleOpenAddStudent}
-          >
-            <Ionicons name="person-add-outline" size={15} color={COLORS.ivory} />
-            <Text style={[styles.addSmallBtnText, fonts.sansBold]}>
-              Tambah Murid
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.memberSwitchScroll}
-        >
-          {students.map((student) => {
-            const selected = student.id === activeStudent.id;
-            const hadirCount = countHadir(student);
-            return (
-              <TouchableOpacity
-                key={student.id}
-                style={[
-                  styles.memberPill,
-                  selected && styles.memberPillActive,
-                ]}
-                activeOpacity={0.82}
-                onPress={() => setActiveStudentId(student.id)}
-              >
-                <View style={styles.memberPillTop}>
-                  <Text
-                    style={[
-                      styles.memberPillName,
-                      fonts.sansBold,
-                      selected && styles.memberPillNameActive,
-                    ]}
-                  >
-                    {student.nama.trim() || 'Murid Baru'}
-                  </Text>
-                  <View
-                    style={[
-                      styles.memberJenjangChip,
-                      selected && styles.memberJenjangChipActive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.memberJenjangText,
-                        fonts.sansBold,
-                        selected && styles.memberJenjangTextActive,
-                      ]}
-                    >
-                      {student.jenjang}
-                    </Text>
-                  </View>
-                </View>
-                <Text
-                  style={[
-                    styles.memberPillCount,
-                    fonts.sansSemi,
-                    selected && styles.memberPillCountActive,
-                  ]}
-                >
-                  {hadirCount}/12 Pertemuan
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* Kartu Profil Murid */}
+        {/* Header Ringkasan Kehadiran */}
         <PaperCard variant="ivory" layerColor={COLORS.moss} showTape>
           <View style={styles.memberCardTopBand}>
             <View style={styles.memberCardBrandLeft}>
@@ -2128,793 +2135,57 @@ export default function App() {
                   resizeMode="contain"
                 />
               </View>
-              <View>
+              <View style={styles.flexOne}>
                 <Text style={[styles.memberCardOrg, fonts.loraBold]}>
-                  SAKTAH TARBIYAH
+                  {isWali
+                    ? currentUser.Nama_Anak || 'Ananda'
+                    : selectedAnakFilter === 'Semua'
+                    ? 'Semua Murid'
+                    : selectedAnakFilter}
                 </Text>
                 <Text style={[styles.memberCardLabel, fonts.sansBold]}>
-                  KARTU PROFIL MURID
+                  {isWali ? 'LAPORAN PROGRES ANANDA (READ-ONLY)' : 'REKAP PROGRES MURID'}
                 </Text>
               </View>
-            </View>
-            <View style={styles.memberCardBadge}>
-              <Text style={[styles.memberCardBadgeText, fonts.sansBold]}>
-                {activeStudent.jenjang}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.memberCardDivider} />
-
-          <Text style={[styles.memberCardName, fonts.loraBold]}>
-            {activeStudent.nama.trim() || 'Nama Murid Belum Diisi'}
-          </Text>
-          <View style={styles.memberCardMetaGrid}>
-            <View style={styles.memberCardMetaItem}>
-              <Text style={[styles.metaKey, fonts.sansSemi]}>Program</Text>
-              <Text style={[styles.metaVal, fonts.sansBold]}>
-                {activeStudent.program || '-'}
-              </Text>
-            </View>
-            <View style={styles.memberCardMetaItem}>
-              <Text style={[styles.metaKey, fonts.sansSemi]}>Pengajar</Text>
-              <Text style={[styles.metaVal, fonts.sansBold]}>
-                {activeStudent.pengajar || '-'}
-              </Text>
-            </View>
-            <View style={styles.memberCardMetaItem}>
-              <Text style={[styles.metaKey, fonts.sansSemi]}>Bulan</Text>
-              <Text style={[styles.metaVal, fonts.sansBold]}>
-                {activeStudent.bulan || '-'}
-              </Text>
-            </View>
-            <View style={styles.memberCardMetaItem}>
-              <Text style={[styles.metaKey, fonts.sansSemi]}>Kehadiran</Text>
-              <Text style={[styles.metaValAccent, fonts.sansBold]}>
-                {totalHadir} / 12 Hadir
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.memberCardActionsRow}>
-            <TouchableOpacity
-              style={styles.editProfileToggleBtn}
-              activeOpacity={0.8}
-              onPress={() => setProfileFormOpen((prev) => !prev)}
-            >
-              <Feather
-                name={profileFormOpen ? 'chevron-up' : 'edit-3'}
-                size={15}
-                color={COLORS.forest}
-              />
-              <Text style={[styles.editProfileToggleText, fonts.sansBold]}>
-                {profileFormOpen ? 'Tutup Form Profil' : 'Ubah Data Profil'}
-              </Text>
-            </TouchableOpacity>
-
-            {students.length > 1 && (
-              <TouchableOpacity
-                style={styles.deleteProfileBtn}
-                activeOpacity={0.8}
-                onPress={() => setDeleteConfirmVisible(true)}
-              >
-                <Ionicons
-                  name="trash-outline"
-                  size={15}
-                  color={COLORS.dangerText}
-                />
-                <Text style={[styles.deleteProfileBtnText, fonts.sansBold]}>
-                  Hapus
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {profileFormOpen && (
-            <View style={styles.inlineProfileForm}>
-              <Text style={[styles.inputLabel, fonts.sansBold]}>Nama Murid</Text>
-              <TextInput
-                style={[styles.textInput, fonts.sansRegular]}
-                value={activeStudent.nama}
-                onChangeText={(text) => updateStudentField('nama', text)}
-                placeholder="Nama lengkap anak"
-                placeholderTextColor={COLORS.textMuted}
-              />
-
-              <Text style={[styles.inputLabel, fonts.sansBold]}>
-                Jenjang Pendidikan
-              </Text>
-              <View style={styles.chipWrap}>
-                {JENJANG_OPTIONS.map((jjg) => {
-                  const selected = activeStudent.jenjang === jjg;
-                  return (
-                    <TouchableOpacity
-                      key={jjg}
-                      style={[
-                        styles.choiceChip,
-                        selected && styles.choiceChipActive,
-                      ]}
-                      activeOpacity={0.8}
-                      onPress={() => updateStudentField('jenjang', jjg)}
-                    >
-                      <Text
-                        style={[
-                          styles.choiceChipText,
-                          fonts.sansBold,
-                          selected && styles.choiceChipTextActive,
-                        ]}
-                      >
-                        Jenjang {jjg}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <Text style={[styles.inputLabel, fonts.sansBold]}>Program</Text>
-              <View style={styles.chipWrap}>
-                {PROGRAM_OPTIONS.map((prog) => {
-                  const selected = activeStudent.program === prog;
-                  return (
-                    <TouchableOpacity
-                      key={prog}
-                      style={[
-                        styles.choiceChip,
-                        selected && styles.choiceChipActive,
-                      ]}
-                      activeOpacity={0.8}
-                      onPress={() => updateStudentField('program', prog)}
-                    >
-                      <Text
-                        style={[
-                          styles.choiceChipText,
-                          fonts.sansSemi,
-                          selected && styles.choiceChipTextActive,
-                        ]}
-                      >
-                        {prog}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <TextInput
-                style={[styles.textInput, fonts.sansRegular]}
-                value={activeStudent.program}
-                onChangeText={(text) => updateStudentField('program', text)}
-                placeholder="Nama program belajar"
-                placeholderTextColor={COLORS.textMuted}
-              />
-
-              <Text style={[styles.inputLabel, fonts.sansBold]}>Pengajar</Text>
-              <View style={styles.chipWrap}>
-                {PENGAJAR_OPTIONS.map((guru) => {
-                  const selected = activeStudent.pengajar === guru;
-                  return (
-                    <TouchableOpacity
-                      key={guru}
-                      style={[
-                        styles.choiceChip,
-                        selected && styles.choiceChipActive,
-                      ]}
-                      activeOpacity={0.8}
-                      onPress={() => updateStudentField('pengajar', guru)}
-                    >
-                      <Text
-                        style={[
-                          styles.choiceChipText,
-                          fonts.sansSemi,
-                          selected && styles.choiceChipTextActive,
-                        ]}
-                      >
-                        {guru}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <TextInput
-                style={[styles.textInput, fonts.sansRegular]}
-                value={activeStudent.pengajar}
-                onChangeText={(text) => updateStudentField('pengajar', text)}
-                placeholder="Nama pengajar"
-                placeholderTextColor={COLORS.textMuted}
-              />
-
-              <Text style={[styles.inputLabel, fonts.sansBold]}>Bulan</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.bulanScroll}
-              >
-                {BULAN_OPTIONS.map((bln) => {
-                  const selected = activeStudent.bulan === bln;
-                  return (
-                    <TouchableOpacity
-                      key={bln}
-                      style={[
-                        styles.choiceChip,
-                        selected && styles.choiceChipActive,
-                      ]}
-                      activeOpacity={0.8}
-                      onPress={() => updateStudentField('bulan', bln)}
-                    >
-                      <Text
-                        style={[
-                          styles.choiceChipText,
-                          fonts.sansSemi,
-                          selected && styles.choiceChipTextActive,
-                        ]}
-                      >
-                        {bln}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-              <TextInput
-                style={[styles.textInput, fonts.sansRegular, { marginBottom: 0 }]}
-                value={activeStudent.bulan}
-                onChangeText={(text) => updateStudentField('bulan', text)}
-                placeholder="Contoh: November 2026"
-                placeholderTextColor={COLORS.textMuted}
-              />
-            </View>
-          )}
-        </PaperCard>
-
-        {/* Grid 12 Pertemuan Stempel Melingkar */}
-        <PaperCard variant="sage" layerColor={COLORS.forest}>
-          <View style={styles.progressHeaderRow}>
-            <View style={styles.progressTitleCol}>
-              <Text style={[styles.cardHeading, fonts.loraBold]}>
-                Stempel Kehadiran 12 Pertemuan
-              </Text>
-              <Text style={[styles.cardSubtext, fonts.sansRegular]}>
-                Ketuk stempel melingkar untuk menandai Hadir & tanggal otomatis
-              </Text>
             </View>
             <View style={styles.progressBadge}>
               <Text style={[styles.progressBadgeText, fonts.sansBold]}>
-                {totalHadir} / 12
+                {hadirTotal} Hadir
               </Text>
             </View>
           </View>
 
-          <Text style={[styles.progressLabelLine, fonts.sansBold]}>
-            {totalHadir} / 12 Pertemuan Tercapai ({pct}%)
+          <Text style={[styles.progressLabelLine, fonts.sansBold, { marginTop: 12 }]}>
+            {hadirTotal} / {progressTarget} Pertemuan Hadir ({progressPct}%)
           </Text>
           <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${pct}%` }]} />
+            <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
           </View>
 
-          <View style={styles.stampGrid}>
-            {activeStudent.pertemuan.map((item) => {
-              const isHadir = item.hadir;
-              return (
-                <TouchableOpacity
-                  key={item.nomor}
-                  style={[
-                    styles.ticketCell,
-                    isHadir && styles.ticketCellHadir,
-                  ]}
-                  activeOpacity={0.78}
-                  onPress={() => toggleMeetingStamp(item.nomor)}
-                >
-                  <Text style={[styles.ticketNoText, fonts.sansBold]}>
-                    PERT. {item.nomor}
-                  </Text>
-
-                  <View
-                    style={[
-                      styles.circularStamp,
-                      isHadir
-                        ? styles.circularStampHadir
-                        : styles.circularStampEmpty,
-                    ]}
-                  >
-                    {isHadir ? (
-                      <>
-                        <Ionicons
-                          name="checkmark-done"
-                          size={18}
-                          color={COLORS.ivory}
-                        />
-                        <Text style={[styles.stampCapText, fonts.sansBold]}>
-                          HADIR
-                        </Text>
-                      </>
-                    ) : (
-                      <Text style={[styles.stampNumberText, fonts.loraBold]}>
-                        {item.nomor}
-                      </Text>
-                    )}
-                  </View>
-
-                  <Text
-                    style={[
-                      styles.ticketDateLabel,
-                      fonts.sansSemi,
-                      isHadir && styles.ticketDateLabelHadir,
-                    ]}
-                  >
-                    {isHadir && item.tanggal ? item.tanggal : 'Ketuk Cap'}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </PaperCard>
-
-        {/* Catatan Perkembangan Pertemuan 1-12 */}
-        <PaperCard variant="ivory" layerColor={COLORS.sageDark}>
-          <Text style={[styles.cardHeading, fonts.loraBold]}>
-            Catatan Perkembangan Pertemuan
-          </Text>
-          <Text style={[styles.cardSubtext, fonts.sansRegular]}>
-            Ketuk tag cepat atau tulis langsung materi dan capaian anak (1–12).
-          </Text>
-
-          {activeStudent.pertemuan.map((item) => (
-            <View
-              key={item.nomor}
-              style={[
-                styles.noteCardItem,
-                item.hadir && styles.noteCardItemHadir,
-              ]}
-            >
-              <View style={styles.noteTopRow}>
-                <View style={styles.noteTitleGroup}>
-                  <View
-                    style={[
-                      styles.noteRoundNum,
-                      item.hadir && styles.noteRoundNumHadir,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.noteRoundNumText,
-                        fonts.sansBold,
-                        item.hadir && styles.noteRoundNumTextHadir,
-                      ]}
-                    >
-                      {item.nomor}
-                    </Text>
-                  </View>
-                  <Text style={[styles.noteItemTitle, fonts.sansBold]}>
-                    Pertemuan {item.nomor}
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  style={[
-                    styles.noteStampBtn,
-                    item.hadir && styles.noteStampBtnHadir,
-                  ]}
-                  activeOpacity={0.78}
-                  onPress={() => toggleMeetingStamp(item.nomor)}
-                >
-                  <Ionicons
-                    name={item.hadir ? 'checkmark-circle' : 'ellipse-outline'}
-                    size={15}
-                    color={item.hadir ? COLORS.ivory : COLORS.forest}
-                  />
-                  <Text
-                    style={[
-                      styles.noteStampBtnText,
-                      fonts.sansBold,
-                      item.hadir && styles.noteStampBtnTextHadir,
-                    ]}
-                  >
-                    {item.hadir ? item.tanggal || 'Hadir' : 'Cap Hadir'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.tagRow}>
-                {CAPAIAN_TAGS.map((tag) => {
-                  const hasTag = item.catatan.includes(tag);
-                  return (
-                    <TouchableOpacity
-                      key={tag}
-                      style={[styles.tagChip, hasTag && styles.tagChipActive]}
-                      activeOpacity={0.78}
-                      onPress={() => toggleMeetingTag(item.nomor, tag)}
-                    >
-                      <Text
-                        style={[
-                          styles.tagChipText,
-                          fonts.sansSemi,
-                          hasTag && styles.tagChipTextActive,
-                        ]}
-                      >
-                        {tag}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <TextInput
-                style={[styles.noteTextInput, fonts.sansRegular]}
-                value={item.catatan}
-                onChangeText={(text) => updateMeetingNote(item.nomor, text)}
-                placeholder={`Tulis catatan perkembangan pertemuan ${item.nomor}...`}
-                placeholderTextColor={COLORS.textMuted}
-                multiline
-                textAlignVertical="top"
-              />
-            </View>
-          ))}
-        </PaperCard>
-
-        {/* Kirim Rekap ke WhatsApp */}
-        <PaperCard variant="sage" layerColor={COLORS.moss}>
-          <View style={styles.waHeaderRow}>
-            <View style={styles.waIconBadge}>
-              <Ionicons name="logo-whatsapp" size={22} color={COLORS.ivory} />
-            </View>
-            <View style={styles.waHeaderTextCol}>
-              <Text style={[styles.cardHeading, fonts.loraBold]}>
-                Kirim Rekap ke WhatsApp
-              </Text>
-              <Text
-                style={[styles.cardSubtext, fonts.sansRegular, { marginBottom: 0 }]}
-              >
-                Rangkuman kehadiran ({totalHadir}/12) dan catatan terbaru murid.
-              </Text>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={styles.waPrimaryBtn}
-            activeOpacity={0.82}
-            onPress={handleSendAttendanceReport}
-          >
-            <Ionicons name="logo-whatsapp" size={20} color={COLORS.ivory} />
-            <Text style={[styles.waPrimaryBtnText, fonts.sansBold]}>
-              Kirim Rekap Kartu Absen ke WhatsApp
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.waPreviewBtn}
-            activeOpacity={0.82}
-            onPress={() =>
-              setWaPreviewModal({
-                visible: true,
-                title: 'Pratinjau Rekap Kartu Absen',
-                text: buildWhatsAppAttendanceReport(activeStudent),
-              })
-            }
-          >
-            <Ionicons name="eye-outline" size={18} color={COLORS.forest} />
-            <Text style={[styles.waPreviewBtnText, fonts.sansBold]}>
-              Lihat Pratinjau Rekap
-            </Text>
-          </TouchableOpacity>
-        </PaperCard>
-      </View>
-    );
-  };
-
-  /* Tab 4: Saktah Play */
-  const renderKartuLipatSection = () => {
-    const filteredCards =
-      doaFilter === 'Semua'
-        ? DOA_ADAB_CARDS
-        : DOA_ADAB_CARDS.filter((item) => item.kategori === doaFilter);
-
-    return (
-      <View>
-        <PaperCard variant="sage" layerColor={COLORS.forest} showTape>
-          <View style={styles.playIntroRow}>
-            <Feather name="book-open" size={22} color={COLORS.forest} />
-            <View style={styles.playIntroTextCol}>
-              <Text style={[styles.cardHeading, fonts.loraBold]}>
-                Kartu Lipat Doa Harian & Adab
-              </Text>
-              <Text
-                style={[styles.cardSubtext, fonts.sansRegular, { marginBottom: 0 }]}
-              >
-                Ketuk kartu untuk membuka bacaan latin, arti lembut, dan
-                tantangan praktik baik hari ini.
-              </Text>
-            </View>
-          </View>
-        </PaperCard>
-
-        <View style={styles.chipWrap}>
-          {['Semua', 'Doa Harian', 'Adab Anak'].map((cat) => {
-            const active = doaFilter === cat;
-            return (
-              <TouchableOpacity
-                key={cat}
-                style={[styles.filterPill, active && styles.filterPillActive]}
-                activeOpacity={0.8}
-                onPress={() => setDoaFilter(cat)}
-              >
-                <Text
-                  style={[
-                    styles.filterPillText,
-                    fonts.sansBold,
-                    active && styles.filterPillTextActive,
-                  ]}
-                >
-                  {cat}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {filteredCards.map((card, idx) => {
-          const isOpen = Boolean(openDoaIds[card.id]);
-          const isDone = Boolean(doneChallenges[card.id]);
-          return (
-            <PaperCard
-              key={card.id}
-              variant={idx % 2 === 0 ? 'ivory' : 'sage'}
-              layerColor={idx % 2 === 0 ? COLORS.sageDark : COLORS.forest}
-            >
-              <TouchableOpacity
-                style={styles.foldFrontTouch}
-                activeOpacity={0.82}
-                onPress={() =>
-                  setOpenDoaIds((prev) => ({
-                    ...prev,
-                    [card.id]: !prev[card.id],
-                  }))
-                }
-              >
-                <View style={styles.foldIconCircle}>
-                  <Ionicons name={card.ikon} size={22} color={COLORS.forest} />
-                </View>
-                <View style={styles.foldFrontTextCol}>
-                  <View style={styles.foldBadgeRow}>
-                    <View style={styles.foldCategoryChip}>
-                      <Text style={[styles.foldCategoryText, fonts.sansBold]}>
-                        {card.kategori}
-                      </Text>
-                    </View>
-                    {isDone && (
-                      <View style={styles.foldDoneChip}>
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={12}
-                          color={COLORS.ivory}
-                        />
-                        <Text style={[styles.foldDoneText, fonts.sansBold]}>
-                          Dipraktikkan
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={[styles.foldTitle, fonts.loraBold]}>
-                    {card.judul}
-                  </Text>
-                  <Text style={[styles.foldTeaser, fonts.sansRegular]}>
-                    {card.teaser}
-                  </Text>
-                </View>
-
-                <View style={styles.foldChevronBox}>
-                  <Feather
-                    name={isOpen ? 'chevron-up' : 'chevron-down'}
-                    size={18}
-                    color={COLORS.forest}
-                  />
-                </View>
-              </TouchableOpacity>
-
-              {isOpen && (
-                <View style={styles.foldInnerPanel}>
-                  <View style={styles.foldDivider} />
-                  <Text style={[styles.foldSectionLabel, fonts.sansBold]}>
-                    BACAAN LATIN
-                  </Text>
-                  <Text style={[styles.foldLatinText, fonts.loraBold]}>
-                    {card.lafazLatin}
-                  </Text>
-
-                  <Text style={[styles.foldSectionLabel, fonts.sansBold]}>
-                    ARTI LEMBUT
-                  </Text>
-                  <Text style={[styles.foldMeaningText, fonts.sansRegular]}>
-                    {card.artiLembut}
-                  </Text>
-
-                  <View style={styles.challengeBox}>
-                    <View style={styles.challengeHeader}>
-                      <Ionicons
-                        name="sparkles-outline"
-                        size={16}
-                        color={COLORS.forest}
-                      />
-                      <Text style={[styles.challengeLabel, fonts.sansBold]}>
-                        TANTANGAN PRAKTIK BAIK
-                      </Text>
-                    </View>
-                    <Text style={[styles.challengeText, fonts.sansRegular]}>
-                      {card.tantangan}
-                    </Text>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.challengeBtn,
-                        isDone && styles.challengeBtnDone,
-                      ]}
-                      activeOpacity={0.8}
-                      onPress={() =>
-                        setDoneChallenges((prev) => ({
-                          ...prev,
-                          [card.id]: !prev[card.id],
-                        }))
-                      }
-                    >
-                      <Ionicons
-                        name={isDone ? 'checkmark-circle' : 'ellipse-outline'}
-                        size={17}
-                        color={isDone ? COLORS.ivory : COLORS.forest}
-                      />
-                      <Text
-                        style={[
-                          styles.challengeBtnText,
-                          fonts.sansBold,
-                          isDone && styles.challengeBtnTextDone,
-                        ]}
-                      >
-                        {isDone
-                          ? 'Alhamdulillah, Sudah Dipraktikkan'
-                          : 'Tandai Tantangan Selesai'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-            </PaperCard>
-          );
-        })}
-      </View>
-    );
-  };
-
-  const renderKuisBintangSection = () => {
-    if (quizFinished) {
-      let subtitleCert =
-        'MasyaAllah! Terus berlatih dengan tenang bersama Ayah, Bunda, dan Kakak Pengajar.';
-      if (quizStarCount >= 8) {
-        subtitleCert =
-          'Luar biasa teliti dalam Calistung, pengenalan huruf, doa harian, dan adab anak!';
-      } else if (quizStarCount >= 5) {
-        subtitleCert =
-          'Kemajuan yang hebat! Sedikit latihan lagi semua bintang akan terisi penuh.';
-      }
-
-      return (
-        <Animated.View style={{ transform: [{ scale: certScale }] }}>
-          <PaperCard variant="ivory" layerColor={COLORS.moss} showTape>
-            <View style={styles.certContainer}>
-              <View style={styles.certTopRibbon}>
-                <Feather name="award" size={32} color={COLORS.gold} />
-              </View>
-
-              <Text style={[styles.certOrgTag, fonts.sansBold]}>
-                SERTIFIKAT APRESIASI SAKTAH PLAY
-              </Text>
-
-              <Text style={[styles.certHeadline, fonts.loraBold]}>
-                Hebat! Kamu meraih {quizStarCount} Bintang Hari Ini
-              </Text>
-
-              <Text style={[styles.certRecipient, fonts.sansSemi]}>
-                Untuk {activeStudent.nama || 'Sahabat Saktah'}
-              </Text>
-
-              <View style={styles.certStarsGrid}>
-                {KUIS_SOAL_10.map((soal) => {
-                  const earned = quizAnswers[soal.id] === soal.jawabanBenar;
-                  return (
-                    <View
-                      key={soal.id}
-                      style={[
-                        styles.certStarChip,
-                        earned
-                          ? styles.certStarChipEarned
-                          : styles.certStarChipEmpty,
-                      ]}
-                    >
-                      <Ionicons
-                        name={earned ? 'star' : 'star-outline'}
-                        size={18}
-                        color={earned ? COLORS.gold : COLORS.textMuted}
-                      />
-                    </View>
-                  );
-                })}
-              </View>
-
-              <Text style={[styles.certMessage, fonts.sansRegular]}>
-                {subtitleCert}
-              </Text>
-
-              <TouchableOpacity
-                style={styles.quizPrimaryBtn}
-                activeOpacity={0.82}
-                onPress={handleRestartQuiz}
-              >
-                <Ionicons name="refresh" size={18} color={COLORS.ivory} />
-                <Text style={[styles.quizPrimaryBtnText, fonts.sansBold]}>
-                  Main Kuis Bintang Lagi
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.quizSecondaryBtn}
-                activeOpacity={0.82}
-                onPress={() => setPlayMode('lipat')}
-              >
-                <Feather name="book-open" size={17} color={COLORS.forest} />
-                <Text style={[styles.quizSecondaryBtnText, fonts.sansBold]}>
-                  Buka Kartu Lipat Doa & Adab
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </PaperCard>
-        </Animated.View>
-      );
-    }
-
-    const isAnswered = selectedQuizChoice !== undefined;
-    const isCorrect = selectedQuizChoice === currentQuestion.jawabanBenar;
-    const letters = ['A', 'B', 'C', 'D'];
-
-    return (
-      <View>
-        <PaperCard variant="sage" layerColor={COLORS.forest}>
-          <View style={styles.quizTopBar}>
-            <Text style={[styles.quizProgressLabel, fonts.sansBold]}>
-              Soal {quizIndex + 1} dari {KUIS_SOAL_10.length}
-            </Text>
-            <Animated.View
-              style={[
-                styles.quizStarCounter,
-                { transform: [{ scale: starPulse }] },
-              ]}
-            >
-              <Ionicons name="star" size={15} color={COLORS.gold} />
-              <Text style={[styles.quizStarCounterText, fonts.sansBold]}>
-                {quizStarCount} Bintang
-              </Text>
-            </Animated.View>
-          </View>
-
-          <View style={styles.quizTenStarsRow}>
-            {KUIS_SOAL_10.map((soal, idx) => {
-              const ans = quizAnswers[soal.id];
-              const answered = ans !== undefined;
-              const right = ans === soal.jawabanBenar;
-              const current = idx === quizIndex;
+          {/* Stempel Pertemuan dari Progres */}
+          <View style={styles.stampMiniWrap}>
+            {Array.from({ length: 12 }, (_, idx) => {
+              const rec = visibleProgres[idx];
+              const isHadir =
+                rec && rec.Status_Hadir.toLowerCase() === 'hadir';
               return (
                 <View
-                  key={soal.id}
+                  key={idx}
                   style={[
-                    styles.miniStarNode,
-                    answered && right && styles.miniStarNodeRight,
-                    answered && !right && styles.miniStarNodeWrong,
-                    current && !answered && styles.miniStarNodeCurrent,
+                    styles.stampMiniCircle,
+                    isHadir
+                      ? styles.stampMiniCircleActive
+                      : styles.stampMiniCircleIdle,
                   ]}
                 >
-                  {answered && right ? (
-                    <Ionicons name="star" size={13} color={COLORS.gold} />
+                  {isHadir ? (
+                    <Ionicons
+                      name="checkmark-done"
+                      size={14}
+                      color={COLORS.ivory}
+                    />
                   ) : (
-                    <Text
-                      style={[
-                        styles.miniStarNum,
-                        fonts.sansBold,
-                        answered && !right && { color: COLORS.dangerText },
-                      ]}
-                    >
+                    <Text style={[styles.stampMiniNum, fonts.sansBold]}>
                       {idx + 1}
                     </Text>
                   )}
@@ -2924,116 +2195,467 @@ export default function App() {
           </View>
         </PaperCard>
 
-        <PaperCard variant="ivory" layerColor={COLORS.moss}>
-          <View style={styles.levelBadge}>
-            <Text style={[styles.levelBadgeText, fonts.sansBold]}>
-              {currentQuestion.level}
-            </Text>
-          </View>
-
-          <Text style={[styles.questionText, fonts.loraBold]}>
-            {currentQuestion.pertanyaan}
-          </Text>
-
-          {currentQuestion.pilihan.map((opt, idx) => {
-            const isChosen = selectedQuizChoice === idx;
-            const isRight = idx === currentQuestion.jawabanBenar;
-
-            let optBg = COLORS.cream;
-            let optBorder = COLORS.forest;
-            let letterBg = COLORS.forest;
-            let textColor = COLORS.textPrimary;
-
-            if (isAnswered) {
-              if (isRight) {
-                optBg = COLORS.sage;
-                optBorder = COLORS.forest;
-                letterBg = COLORS.forest;
-                textColor = COLORS.forest;
-              } else if (isChosen) {
-                optBg = COLORS.dangerBg;
-                optBorder = COLORS.dangerText;
-                letterBg = COLORS.dangerText;
-                textColor = COLORS.dangerText;
-              }
-            }
-
-            return (
-              <TouchableOpacity
-                key={`${currentQuestion.id}-${idx}`}
-                style={[
-                  styles.quizOptionBtn,
-                  { backgroundColor: optBg, borderColor: optBorder },
-                ]}
-                activeOpacity={isAnswered ? 1 : 0.8}
-                disabled={isAnswered}
-                onPress={() => handleSelectQuizAnswer(idx)}
-              >
-                <View
-                  style={[styles.quizOptionLetter, { backgroundColor: letterBg }]}
-                >
-                  <Text style={[styles.quizOptionLetterText, fonts.sansBold]}>
-                    {letters[idx]}
-                  </Text>
-                </View>
-                <Text
-                  style={[
-                    styles.quizOptionLabel,
-                    fonts.sansSemi,
-                    { color: textColor },
-                  ]}
-                >
-                  {opt}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-
-          {isAnswered && (
-            <View
-              style={[
-                styles.quizFeedbackCard,
-                isCorrect
-                  ? styles.quizFeedbackRight
-                  : styles.quizFeedbackTryAgain,
-              ]}
-            >
-              <View style={styles.quizFeedbackHeader}>
-                <Ionicons
-                  name={isCorrect ? 'star' : 'bulb-outline'}
-                  size={18}
-                  color={isCorrect ? COLORS.gold : COLORS.forest}
-                />
-                <Text style={[styles.quizFeedbackHeading, fonts.sansBold]}>
-                  {isCorrect
-                    ? 'MasyaAllah, Benar! +1 Bintang'
-                    : 'Hampir tepat, ayo ingat penjelasannya:'}
-                </Text>
-              </View>
-              <Text style={[styles.quizFeedbackBody, fonts.sansRegular]}>
-                {currentQuestion.penjelasan}
+        {/* Filter Anak & Tombol Tambah (Admin) */}
+        {isAdmin && (
+          <>
+            <View style={styles.sectionHeadingRow}>
+              <Text style={[styles.sectionTitle, fonts.loraBold]}>
+                Filter Murid
               </Text>
-
               <TouchableOpacity
-                style={styles.quizPrimaryBtn}
+                style={styles.addSmallBtn}
                 activeOpacity={0.82}
-                onPress={handleNextQuizStep}
+                onPress={openAddProgres}
               >
-                <Text style={[styles.quizPrimaryBtnText, fonts.sansBold]}>
-                  {quizIndex < KUIS_SOAL_10.length - 1
-                    ? 'Lanjut ke Soal Berikutnya'
-                    : 'Buka Sertifikat Apresiasi'}
+                <Feather name="plus" size={15} color={COLORS.ivory} />
+                <Text style={[styles.addSmallBtnText, fonts.sansBold]}>
+                  Catat Progres
                 </Text>
-                <Ionicons name="arrow-forward" size={18} color={COLORS.ivory} />
               </TouchableOpacity>
             </View>
-          )}
-        </PaperCard>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.memberSwitchScroll}
+            >
+              {['Semua', ...studentNamesPool].map((name) => {
+                const active = selectedAnakFilter === name;
+                return (
+                  <TouchableOpacity
+                    key={name}
+                    style={[
+                      styles.filterPill,
+                      active && styles.filterPillActive,
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={() => setSelectedAnakFilter(name)}
+                  >
+                    <Text
+                      style={[
+                        styles.filterPillText,
+                        fonts.sansBold,
+                        active && styles.filterPillTextActive,
+                      ]}
+                    >
+                      {name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </>
+        )}
+
+        {/* Daftar Catatan Progres */}
+        <Text style={[styles.sectionTitle, fonts.loraBold]}>
+          Catatan Pertemuan ({visibleProgres.length})
+        </Text>
+
+        {visibleProgres.length === 0 ? (
+          <PaperCard variant="sage" layerColor={COLORS.forest}>
+            <Text style={[styles.emptyStateText, fonts.sansRegular]}>
+              {isWali
+                ? `Belum ada catatan progres untuk ${
+                    currentUser.Nama_Anak || 'Ananda'
+                  }.`
+                : 'Belum ada data progres untuk filter ini.'}
+            </Text>
+          </PaperCard>
+        ) : (
+          visibleProgres.map((item) => {
+            const isHadir = item.Status_Hadir.toLowerCase() === 'hadir';
+            return (
+              <PaperCard
+                key={item.ID || `${item.Tanggal}-${item.Nama_Anak}`}
+                variant={isHadir ? 'sage' : 'ivory'}
+                layerColor={isHadir ? COLORS.forest : COLORS.sageDark}
+              >
+                <View style={styles.progresCardTop}>
+                  <View style={styles.progresDateBadge}>
+                    <Ionicons
+                      name="calendar-outline"
+                      size={13}
+                      color={COLORS.forest}
+                    />
+                    <Text style={[styles.progresDateText, fonts.sansBold]}>
+                      {item.Tanggal || '-'}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.statusHadirPill,
+                      isHadir
+                        ? styles.statusHadirYes
+                        : styles.statusHadirOther,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.statusHadirText,
+                        fonts.sansBold,
+                        isHadir && { color: COLORS.ivory },
+                      ]}
+                    >
+                      {item.Status_Hadir}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={[styles.progresAnakName, fonts.loraBold]}>
+                  {item.Nama_Anak}
+                </Text>
+                <Text style={[styles.progresCatatan, fonts.sansRegular]}>
+                  {item.Catatan_Perkembangan || 'Tidak ada catatan tambahan.'}
+                </Text>
+
+                <View style={styles.progresMetaFooter}>
+                  <View style={styles.pengajarBadge}>
+                    <Feather name="user" size={12} color={COLORS.textMuted} />
+                    <Text style={[styles.pengajarBadgeText, fonts.sansSemi]}>
+                      Pengajar: {item.Pengajar || '-'}
+                    </Text>
+                  </View>
+                </View>
+
+                {isAdmin && (
+                  <View style={styles.adminActionRow}>
+                    <TouchableOpacity
+                      style={styles.adminEditBtn}
+                      activeOpacity={0.8}
+                      onPress={() => openEditProgres(item)}
+                    >
+                      <Feather name="edit-3" size={15} color={COLORS.forest} />
+                      <Text style={[styles.adminEditBtnText, fonts.sansBold]}>
+                        Edit
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.adminDeleteBtn}
+                      activeOpacity={0.8}
+                      onPress={() =>
+                        setDeleteConfirmModal({
+                          visible: true,
+                          sheet: 'Progres',
+                          id: item.ID,
+                          label: `${item.Nama_Anak} (${item.Tanggal})`,
+                        })
+                      }
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={15}
+                        color={COLORS.dangerText}
+                      />
+                      <Text style={[styles.adminDeleteBtnText, fonts.sansBold]}>
+                        Hapus
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </PaperCard>
+            );
+          })
+        )}
+
+        {isAdmin && visibleProgres.length > 0 && (
+          <TouchableOpacity
+            style={styles.waPrimaryBtn}
+            activeOpacity={0.82}
+            onPress={() =>
+              openWhatsAppUrl(
+                buildProgresWhatsAppReport(
+                  selectedAnakFilter === 'Semua'
+                    ? 'Murid Saktah Tarbiyah'
+                    : selectedAnakFilter,
+                  visibleProgres
+                )
+              )
+            }
+          >
+            <Ionicons name="logo-whatsapp" size={20} color={COLORS.ivory} />
+            <Text style={[styles.waPrimaryBtnText, fonts.sansBold]}>
+              Bagikan Rekap Progres ke WhatsApp
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
 
+  /* Tab 4: Saran (Admin: Kotak Masuk + Ubah Status_Baca, Wali: Kirim Saran) */
+  const renderSaranTab = () => {
+    if (isWali) {
+      return (
+        <View style={styles.tabBody}>
+          <PaperCard variant="ivory" layerColor={COLORS.moss} showTape>
+            <View style={styles.playIntroRow}>
+              <Ionicons
+                name="chatbubble-ellipses-outline"
+                size={22}
+                color={COLORS.forest}
+              />
+              <View style={styles.playIntroTextCol}>
+                <Text style={[styles.cardHeading, fonts.loraBold]}>
+                  Kotak Masukan & Saran
+                </Text>
+                <Text
+                  style={[styles.cardSubtext, fonts.sansRegular, { marginBottom: 0 }]}
+                >
+                  Sampaikan pertanyaan, catatan khusus di rumah, atau masukan
+                  untuk Kak Annisa & Kak Burhan.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.waliSenderInfo}>
+              <Text style={[styles.waliSenderText, fonts.sansSemi]}>
+                Pengirim: {currentUser.Nama_User || 'Wali'} • Ananda:{' '}
+                {currentUser.Nama_Anak || '-'}
+              </Text>
+            </View>
+
+            <Text style={[styles.inputLabel, fonts.sansBold]}>
+              Tulis Masukan atau Saran
+            </Text>
+            <TextInput
+              style={[styles.saranTextArea, fonts.sansRegular]}
+              value={newSaranText}
+              onChangeText={(text) => {
+                setNewSaranText(text);
+                if (saranFeedback) setSaranFeedback('');
+              }}
+              placeholder="Contoh: Mohon minggu depan ananda dibantu mengulang huruf hijaiyah sambung..."
+              placeholderTextColor={COLORS.textMuted}
+              multiline
+              textAlignVertical="top"
+            />
+
+            {saranFeedback ? (
+              <View style={styles.saranFeedbackBox}>
+                <Text style={[styles.saranFeedbackText, fonts.sansSemi]}>
+                  {saranFeedback}
+                </Text>
+              </View>
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.waPrimaryBtn, mutating && { opacity: 0.7 }]}
+              activeOpacity={0.82}
+              disabled={mutating}
+              onPress={handleSendSaranWali}
+            >
+              {mutating ? (
+                <ActivityIndicator size="small" color={COLORS.ivory} />
+              ) : (
+                <>
+                  <Feather name="send" size={17} color={COLORS.ivory} />
+                  <Text style={[styles.waPrimaryBtnText, fonts.sansBold]}>
+                    Kirim Masukan ke Pengajar
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </PaperCard>
+
+          <Text style={[styles.sectionTitle, fonts.loraBold]}>
+            Riwayat Pesan Anda ({visibleSaran.length})
+          </Text>
+
+          {visibleSaran.length === 0 ? (
+            <PaperCard variant="sage" layerColor={COLORS.forest}>
+              <Text style={[styles.emptyStateText, fonts.sansRegular]}>
+                Anda belum pernah mengirim masukan melalui kotak saran.
+              </Text>
+            </PaperCard>
+          ) : (
+            visibleSaran.map((item) => {
+              const isRead =
+                item.Status_Baca.toLowerCase() === 'sudah dibaca';
+              return (
+                <PaperCard
+                  key={item.ID || `${item.Tanggal}-${item.Isi_Saran}`}
+                  variant="sage"
+                  layerColor={COLORS.forest}
+                >
+                  <View style={styles.progresCardTop}>
+                    <Text style={[styles.progresDateText, fonts.sansBold]}>
+                      {item.Tanggal}
+                    </Text>
+                    <View
+                      style={[
+                        styles.statusHadirPill,
+                        isRead
+                          ? styles.statusHadirYes
+                          : styles.statusHadirOther,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusHadirText,
+                          fonts.sansBold,
+                          isRead && { color: COLORS.ivory },
+                        ]}
+                      >
+                        {item.Status_Baca}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.progresCatatan, fonts.sansRegular]}>
+                    {item.Isi_Saran}
+                  </Text>
+                </PaperCard>
+              );
+            })
+          )}
+        </View>
+      );
+    }
+
+    /* Admin Inbox Saran */
+    return (
+      <View style={styles.tabBody}>
+        <PaperCard variant="sage" layerColor={COLORS.forest} showTape>
+          <View style={styles.playIntroRow}>
+            <Ionicons
+              name="mail-unread-outline"
+              size={22}
+              color={COLORS.forest}
+            />
+            <View style={styles.playIntroTextCol}>
+              <Text style={[styles.cardHeading, fonts.loraBold]}>
+                Kotak Masuk Orang Tua / Wali
+              </Text>
+              <Text
+                style={[styles.cardSubtext, fonts.sansRegular, { marginBottom: 0 }]}
+              >
+                Baca masukan dari wali murid dan tandai status baca secara
+                real-time.
+              </Text>
+            </View>
+          </View>
+        </PaperCard>
+
+        <View style={styles.chipWrap}>
+          {['Semua', 'Belum Dibaca', 'Sudah Dibaca'].map((flt) => {
+            const active = saranFilter === flt;
+            return (
+              <TouchableOpacity
+                key={flt}
+                style={[styles.filterPill, active && styles.filterPillActive]}
+                activeOpacity={0.8}
+                onPress={() => setSaranFilter(flt)}
+              >
+                <Text
+                  style={[
+                    styles.filterPillText,
+                    fonts.sansBold,
+                    active && styles.filterPillTextActive,
+                  ]}
+                >
+                  {flt}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {visibleSaran.length === 0 ? (
+          <PaperCard variant="ivory" layerColor={COLORS.sageDark}>
+            <Text style={[styles.emptyStateText, fonts.sansRegular]}>
+              Belum ada pesan pada filter “{saranFilter}”.
+            </Text>
+          </PaperCard>
+        ) : (
+          visibleSaran.map((item) => {
+            const isRead = item.Status_Baca.toLowerCase() === 'sudah dibaca';
+            return (
+              <PaperCard
+                key={item.ID || `${item.Tanggal}-${item.Nama_Wali}`}
+                variant={isRead ? 'ivory' : 'sage'}
+                layerColor={isRead ? COLORS.sageDark : COLORS.forest}
+              >
+                <View style={styles.progresCardTop}>
+                  <View style={styles.progresDateBadge}>
+                    <Ionicons
+                      name="calendar-outline"
+                      size={13}
+                      color={COLORS.forest}
+                    />
+                    <Text style={[styles.progresDateText, fonts.sansBold]}>
+                      {item.Tanggal || '-'}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.statusHadirPill,
+                      isRead
+                        ? styles.statusHadirYes
+                        : styles.statusHadirOther,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.statusHadirText,
+                        fonts.sansBold,
+                        isRead && { color: COLORS.ivory },
+                      ]}
+                    >
+                      {item.Status_Baca}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={[styles.progresAnakName, fonts.loraBold]}>
+                  {item.Nama_Wali || 'Orang Tua'} • Wali dari{' '}
+                  {item.Nama_Anak || '-'}
+                </Text>
+                <Text style={[styles.progresCatatan, fonts.sansRegular]}>
+                  {item.Isi_Saran}
+                </Text>
+
+                <TouchableOpacity
+                  style={[
+                    styles.materiCheckBtn,
+                    isRead && styles.materiCheckBtnActive,
+                  ]}
+                  activeOpacity={0.8}
+                  disabled={mutating}
+                  onPress={() => handleToggleSaranRead(item)}
+                >
+                  <Ionicons
+                    name={isRead ? 'mail-open-outline' : 'checkmark-done'}
+                    size={17}
+                    color={isRead ? COLORS.ivory : COLORS.forest}
+                  />
+                  <Text
+                    style={[
+                      styles.materiCheckBtnText,
+                      fonts.sansBold,
+                      isRead && styles.materiCheckBtnTextActive,
+                    ]}
+                  >
+                    {isRead
+                      ? 'Tandai Belum Dibaca'
+                      : 'Tandai Sudah Dibaca'}
+                  </Text>
+                </TouchableOpacity>
+              </PaperCard>
+            );
+          })
+        )}
+      </View>
+    );
+  };
+
+  /* Tab 5: Saktah Play */
   const renderSaktahPlayTab = () => {
+    const filteredCards =
+      doaFilter === 'Semua'
+        ? DOA_ADAB_CARDS
+        : DOA_ADAB_CARDS.filter((item) => item.kategori === doaFilter);
+
     return (
       <View style={styles.tabBody}>
         <View style={styles.playModePillWrap}>
@@ -3086,22 +2708,319 @@ export default function App() {
           </TouchableOpacity>
         </View>
 
-        {playMode === 'lipat'
-          ? renderKartuLipatSection()
-          : renderKuisBintangSection()}
+        {playMode === 'lipat' ? (
+          <View>
+            <View style={styles.chipWrap}>
+              {['Semua', 'Doa Harian', 'Adab Anak'].map((cat) => {
+                const active = doaFilter === cat;
+                return (
+                  <TouchableOpacity
+                    key={cat}
+                    style={[
+                      styles.filterPill,
+                      active && styles.filterPillActive,
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={() => setDoaFilter(cat)}
+                  >
+                    <Text
+                      style={[
+                        styles.filterPillText,
+                        fonts.sansBold,
+                        active && styles.filterPillTextActive,
+                      ]}
+                    >
+                      {cat}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {filteredCards.map((card, idx) => {
+              const isOpen = Boolean(openDoaIds[card.id]);
+              const isDone = Boolean(doneChallenges[card.id]);
+              return (
+                <PaperCard
+                  key={card.id}
+                  variant={idx % 2 === 0 ? 'ivory' : 'sage'}
+                  layerColor={idx % 2 === 0 ? COLORS.sageDark : COLORS.forest}
+                >
+                  <TouchableOpacity
+                    style={styles.foldFrontTouch}
+                    activeOpacity={0.82}
+                    onPress={() =>
+                      setOpenDoaIds((prev) => ({
+                        ...prev,
+                        [card.id]: !prev[card.id],
+                      }))
+                    }
+                  >
+                    <View style={styles.foldIconCircle}>
+                      <Ionicons
+                        name={card.ikon}
+                        size={22}
+                        color={COLORS.forest}
+                      />
+                    </View>
+                    <View style={styles.foldFrontTextCol}>
+                      <Text style={[styles.foldTitle, fonts.loraBold]}>
+                        {card.judul}
+                      </Text>
+                      <Text style={[styles.foldTeaser, fonts.sansRegular]}>
+                        {card.teaser}
+                      </Text>
+                    </View>
+                    <View style={styles.foldChevronBox}>
+                      <Feather
+                        name={isOpen ? 'chevron-up' : 'chevron-down'}
+                        size={18}
+                        color={COLORS.forest}
+                      />
+                    </View>
+                  </TouchableOpacity>
+
+                  {isOpen && (
+                    <View style={styles.foldInnerPanel}>
+                      <View style={styles.foldDivider} />
+                      <Text style={[styles.foldSectionLabel, fonts.sansBold]}>
+                        BACAAN LATIN
+                      </Text>
+                      <Text style={[styles.foldLatinText, fonts.loraBold]}>
+                        {card.lafazLatin}
+                      </Text>
+                      <Text style={[styles.foldSectionLabel, fonts.sansBold]}>
+                        ARTI LEMBUT
+                      </Text>
+                      <Text style={[styles.foldMeaningText, fonts.sansRegular]}>
+                        {card.artiLembut}
+                      </Text>
+                      <View style={styles.challengeBox}>
+                        <Text style={[styles.challengeLabel, fonts.sansBold]}>
+                          TANTANGAN PRAKTIK BAIK
+                        </Text>
+                        <Text style={[styles.challengeText, fonts.sansRegular]}>
+                          {card.tantangan}
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.challengeBtn,
+                            isDone && styles.challengeBtnDone,
+                          ]}
+                          activeOpacity={0.8}
+                          onPress={() =>
+                            setDoneChallenges((prev) => ({
+                              ...prev,
+                              [card.id]: !prev[card.id],
+                            }))
+                          }
+                        >
+                          <Ionicons
+                            name={
+                              isDone ? 'checkmark-circle' : 'ellipse-outline'
+                            }
+                            size={17}
+                            color={isDone ? COLORS.ivory : COLORS.forest}
+                          />
+                          <Text
+                            style={[
+                              styles.challengeBtnText,
+                              fonts.sansBold,
+                              isDone && styles.challengeBtnTextDone,
+                            ]}
+                          >
+                            {isDone
+                              ? 'Alhamdulillah, Sudah Dipraktikkan'
+                              : 'Tandai Tantangan Selesai'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+                </PaperCard>
+              );
+            })}
+          </View>
+        ) : quizFinished ? (
+          <Animated.View style={{ transform: [{ scale: certScale }] }}>
+            <PaperCard variant="ivory" layerColor={COLORS.moss} showTape>
+              <View style={styles.certContainer}>
+                <View style={styles.certTopRibbon}>
+                  <Feather name="award" size={32} color={COLORS.gold} />
+                </View>
+                <Text style={[styles.certOrgTag, fonts.sansBold]}>
+                  SERTIFIKAT APRESIASI SAKTAH PLAY
+                </Text>
+                <Text style={[styles.certHeadline, fonts.loraBold]}>
+                  Hebat! Kamu meraih {quizStarCount} Bintang Hari Ini
+                </Text>
+                <Text style={[styles.certRecipient, fonts.sansSemi]}>
+                  Untuk{' '}
+                  {currentUser.Nama_Anak ||
+                    currentUser.Nama_User ||
+                    'Sahabat Saktah'}
+                </Text>
+                <View style={styles.certStarsGrid}>
+                  {KUIS_SOAL_10.map((soal) => {
+                    const earned = quizAnswers[soal.id] === soal.jawabanBenar;
+                    return (
+                      <View
+                        key={soal.id}
+                        style={[
+                          styles.certStarChip,
+                          earned
+                            ? styles.certStarChipEarned
+                            : styles.certStarChipEmpty,
+                        ]}
+                      >
+                        <Ionicons
+                          name={earned ? 'star' : 'star-outline'}
+                          size={18}
+                          color={earned ? COLORS.gold : COLORS.textMuted}
+                        />
+                      </View>
+                    );
+                  })}
+                </View>
+                <TouchableOpacity
+                  style={styles.quizPrimaryBtn}
+                  activeOpacity={0.82}
+                  onPress={handleRestartQuiz}
+                >
+                  <Ionicons name="refresh" size={18} color={COLORS.ivory} />
+                  <Text style={[styles.quizPrimaryBtnText, fonts.sansBold]}>
+                    Main Kuis Bintang Lagi
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </PaperCard>
+          </Animated.View>
+        ) : (
+          <View>
+            <PaperCard variant="sage" layerColor={COLORS.forest}>
+              <View style={styles.quizTopBar}>
+                <Text style={[styles.quizProgressLabel, fonts.sansBold]}>
+                  Soal {quizIndex + 1} dari {KUIS_SOAL_10.length}
+                </Text>
+                <Animated.View
+                  style={[
+                    styles.quizStarCounter,
+                    { transform: [{ scale: starPulse }] },
+                  ]}
+                >
+                  <Ionicons name="star" size={15} color={COLORS.gold} />
+                  <Text style={[styles.quizStarCounterText, fonts.sansBold]}>
+                    {quizStarCount} Bintang
+                  </Text>
+                </Animated.View>
+              </View>
+            </PaperCard>
+
+            <PaperCard variant="ivory" layerColor={COLORS.moss}>
+              <View style={styles.levelBadge}>
+                <Text style={[styles.levelBadgeText, fonts.sansBold]}>
+                  {currentQuestion.level}
+                </Text>
+              </View>
+              <Text style={[styles.questionText, fonts.loraBold]}>
+                {currentQuestion.pertanyaan}
+              </Text>
+
+              {currentQuestion.pilihan.map((opt, idx) => {
+                const isAnswered = selectedQuizChoice !== undefined;
+                const isChosen = selectedQuizChoice === idx;
+                const isRight = idx === currentQuestion.jawabanBenar;
+
+                let optBg = COLORS.cream;
+                let optBorder = COLORS.forest;
+                let letterBg = COLORS.forest;
+                let textColor = COLORS.textPrimary;
+
+                if (isAnswered) {
+                  if (isRight) {
+                    optBg = COLORS.sage;
+                    optBorder = COLORS.forest;
+                  } else if (isChosen) {
+                    optBg = COLORS.dangerBg;
+                    optBorder = COLORS.dangerText;
+                    letterBg = COLORS.dangerText;
+                    textColor = COLORS.dangerText;
+                  }
+                }
+
+                return (
+                  <TouchableOpacity
+                    key={`${currentQuestion.id}-${idx}`}
+                    style={[
+                      styles.quizOptionBtn,
+                      { backgroundColor: optBg, borderColor: optBorder },
+                    ]}
+                    activeOpacity={isAnswered ? 1 : 0.8}
+                    disabled={isAnswered}
+                    onPress={() => handleSelectQuizAnswer(idx)}
+                  >
+                    <View
+                      style={[
+                        styles.quizOptionLetter,
+                        { backgroundColor: letterBg },
+                      ]}
+                    >
+                      <Text style={[styles.quizOptionLetterText, fonts.sansBold]}>
+                        {['A', 'B', 'C', 'D'][idx]}
+                      </Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.quizOptionLabel,
+                        fonts.sansSemi,
+                        { color: textColor },
+                      ]}
+                    >
+                      {opt}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+
+              {selectedQuizChoice !== undefined && (
+                <View style={styles.quizFeedbackCard}>
+                  <Text style={[styles.quizFeedbackHeading, fonts.sansBold]}>
+                    {selectedQuizChoice === currentQuestion.jawabanBenar
+                      ? 'MasyaAllah, Benar! +1 Bintang'
+                      : 'Hampir tepat!'}
+                  </Text>
+                  <Text style={[styles.quizFeedbackBody, fonts.sansRegular]}>
+                    {currentQuestion.penjelasan}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.quizPrimaryBtn}
+                    activeOpacity={0.82}
+                    onPress={handleNextQuizStep}
+                  >
+                    <Text style={[styles.quizPrimaryBtnText, fonts.sansBold]}>
+                      {quizIndex < KUIS_SOAL_10.length - 1
+                        ? 'Soal Berikutnya'
+                        : 'Lihat Sertifikat Apresiasi'}
+                    </Text>
+                    <Ionicons
+                      name="arrow-forward"
+                      size={18}
+                      color={COLORS.ivory}
+                    />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </PaperCard>
+          </View>
+        )}
       </View>
     );
   };
 
-  /* Floating Bottom Bar (4 Tab Utama) */
+  /* Floating Bottom Bar */
   const renderFloatingBottomBar = () => {
     const tabs = [
-      {
-        key: 'beranda',
-        label: 'Beranda',
-        icon: 'home-outline',
-        activeIcon: 'home',
-      },
+      { key: 'beranda', label: 'Beranda', icon: 'home-outline', activeIcon: 'home' },
       {
         key: 'kurikulum',
         label: 'Kurikulum',
@@ -3109,10 +3028,16 @@ export default function App() {
         activeIcon: 'layers',
       },
       {
-        key: 'absen',
-        label: 'Absen',
+        key: 'progres',
+        label: 'Progres',
         icon: 'calendar-outline',
         activeIcon: 'calendar',
+      },
+      {
+        key: 'saran',
+        label: 'Saran',
+        icon: 'chatbubble-ellipses-outline',
+        activeIcon: 'chatbubble-ellipses',
       },
       {
         key: 'play',
@@ -3141,7 +3066,7 @@ export default function App() {
                 >
                   <Ionicons
                     name={active ? tab.activeIcon : tab.icon}
-                    size={20}
+                    size={19}
                     color={active ? COLORS.moss : COLORS.cream}
                   />
                   <Text
@@ -3180,13 +3105,15 @@ export default function App() {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.responsiveColumn}>
+              {renderSyncBanner()}
               {showTentang ? (
                 renderTentangPage()
               ) : (
                 <>
                   {activeTab === 'beranda' && renderBerandaTab()}
                   {activeTab === 'kurikulum' && renderKurikulumTab()}
-                  {activeTab === 'absen' && renderKartuAbsenTab()}
+                  {activeTab === 'progres' && renderProgresTab()}
+                  {activeTab === 'saran' && renderSaranTab()}
                   {activeTab === 'play' && renderSaktahPlayTab()}
                 </>
               )}
@@ -3197,12 +3124,14 @@ export default function App() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Modal Tambah Bulan Baru (Kurikulum Level 1) */}
+      {/* Modal Tambah / Edit Kurikulum (Admin) */}
       <Modal
-        visible={addMonthModalVisible}
+        visible={kurikulumModal.visible}
         transparent
         animationType="fade"
-        onRequestClose={() => setAddMonthModalVisible(false)}
+        onRequestClose={() =>
+          setKurikulumModal((prev) => ({ ...prev, visible: false }))
+        }
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -3211,102 +3140,44 @@ export default function App() {
               showsVerticalScrollIndicator={false}
             >
               <Text style={[styles.modalTitle, fonts.loraBold]}>
-                Tambah Bulan Kurikulum Baru
+                {kurikulumModal.mode === 'edit'
+                  ? 'Edit Materi Kurikulum'
+                  : 'Tambah Materi Kurikulum'}
               </Text>
               <Text style={[styles.modalSub, fonts.sansRegular]}>
-                Buat tema bulanan baru lengkap dengan materi pekanan yang bisa
-                dicentang.
+                Perubahan langsung disimpan ke tab Kurikulum di Google Sheets.
               </Text>
 
-              <Text style={[styles.inputLabel, fonts.sansBold]}>
-                Judul Bulan & Tema *
-              </Text>
+              <Text style={[styles.inputLabel, fonts.sansBold]}>Bulan *</Text>
               <TextInput
                 style={[styles.textInput, fonts.sansRegular]}
-                value={newMonthTitle}
-                onChangeText={(text) => {
-                  setNewMonthTitle(text);
-                  if (newMonthError) setNewMonthError('');
-                }}
-                placeholder="Contoh: Bulan 4 — Membaca Cerita & Perkalian Awal"
+                value={kurikulumModal.bulan}
+                onChangeText={(text) =>
+                  setKurikulumModal((prev) => ({
+                    ...prev,
+                    bulan: text,
+                    error: '',
+                  }))
+                }
+                placeholder="Contoh: Bulan 1 atau November 2026"
                 placeholderTextColor={COLORS.textMuted}
               />
-              {newMonthError ? (
-                <Text style={[styles.errorText, fonts.sansBold]}>
-                  {newMonthError}
-                </Text>
-              ) : null}
 
-              <Text style={[styles.inputLabel, fonts.sansBold]}>
-                Target Capaian Bulan Ini
-              </Text>
-              <TextInput
-                style={[styles.noteTextInput, fonts.sansRegular]}
-                value={newMonthTarget}
-                onChangeText={setNewMonthTarget}
-                placeholder="Tuliskan target kemampuan yang ingin dicapai ananda..."
-                placeholderTextColor={COLORS.textMuted}
-                multiline
-                textAlignVertical="top"
-              />
-
-              <TouchableOpacity
-                style={[styles.modalPrimaryBtn, { marginTop: 14 }]}
-                activeOpacity={0.82}
-                onPress={handleSaveNewMonth}
-              >
-                <Text style={[styles.modalPrimaryBtnText, fonts.sansBold]}>
-                  Simpan & Buka Detail Bulan
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.modalSecondaryBtn}
-                activeOpacity={0.82}
-                onPress={() => setAddMonthModalVisible(false)}
-              >
-                <Text style={[styles.modalSecondaryBtnText, fonts.sansBold]}>
-                  Batal
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal Tambah Materi Baru (Kurikulum Level 2) */}
-      <Modal
-        visible={addMateriModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAddMateriModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={[styles.modalTitle, fonts.loraBold]}>
-                Tambah Materi Belajar
-              </Text>
-              <Text style={[styles.modalSub, fonts.sansRegular]}>
-                Tambahkan aktivitas baru ke {selectedMonth?.kode || 'bulan ini'}.
-              </Text>
-
-              <Text style={[styles.inputLabel, fonts.sansBold]}>Pekan</Text>
+              <Text style={[styles.inputLabel, fonts.sansBold]}>Minggu</Text>
               <View style={styles.chipWrap}>
-                {PEKAN_OPTIONS.map((pk) => {
-                  const selected = newMateriPekan === pk;
+                {MINGGU_OPTIONS.map((mg) => {
+                  const selected = kurikulumModal.minggu === mg;
                   return (
                     <TouchableOpacity
-                      key={pk}
+                      key={mg}
                       style={[
                         styles.choiceChip,
                         selected && styles.choiceChipActive,
                       ]}
                       activeOpacity={0.8}
-                      onPress={() => setNewMateriPekan(pk)}
+                      onPress={() =>
+                        setKurikulumModal((prev) => ({ ...prev, minggu: mg }))
+                      }
                     >
                       <Text
                         style={[
@@ -3315,7 +3186,7 @@ export default function App() {
                           selected && styles.choiceChipTextActive,
                         ]}
                       >
-                        {pk}
+                        {mg}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -3327,47 +3198,59 @@ export default function App() {
               </Text>
               <TextInput
                 style={[styles.textInput, fonts.sansRegular]}
-                value={newMateriTitle}
-                onChangeText={(text) => {
-                  setNewMateriTitle(text);
-                  if (newMateriError) setNewMateriError('');
-                }}
-                placeholder="Contoh: Menulis Huruf Sambung & Hafalan An-Nas"
+                value={kurikulumModal.judul}
+                onChangeText={(text) =>
+                  setKurikulumModal((prev) => ({
+                    ...prev,
+                    judul: text,
+                    error: '',
+                  }))
+                }
+                placeholder="Contoh: Huruf Vokal & Doa Belajar"
                 placeholderTextColor={COLORS.textMuted}
               />
-              {newMateriError ? (
-                <Text style={[styles.errorText, fonts.sansBold]}>
-                  {newMateriError}
-                </Text>
-              ) : null}
 
-              <Text style={[styles.inputLabel, fonts.sansBold]}>
-                Deskripsi Kegiatan / Media Belajar
-              </Text>
+              <Text style={[styles.inputLabel, fonts.sansBold]}>Deskripsi</Text>
               <TextInput
                 style={[styles.noteTextInput, fonts.sansRegular]}
-                value={newMateriDesc}
-                onChangeText={setNewMateriDesc}
-                placeholder="Contoh: Menggunakan kartu suku kata bergambar & papan tulis mini"
+                value={kurikulumModal.deskripsi}
+                onChangeText={(text) =>
+                  setKurikulumModal((prev) => ({ ...prev, deskripsi: text }))
+                }
+                placeholder="Kegiatan belajar & media yang digunakan..."
                 placeholderTextColor={COLORS.textMuted}
                 multiline
                 textAlignVertical="top"
               />
 
+              {kurikulumModal.error ? (
+                <Text style={[styles.errorText, fonts.sansBold, { marginTop: 8 }]}>
+                  {kurikulumModal.error}
+                </Text>
+              ) : null}
+
               <TouchableOpacity
                 style={[styles.modalPrimaryBtn, { marginTop: 14 }]}
                 activeOpacity={0.82}
-                onPress={handleSaveNewMateri}
+                disabled={mutating}
+                onPress={handleSubmitKurikulum}
               >
-                <Text style={[styles.modalPrimaryBtnText, fonts.sansBold]}>
-                  Tambahkan ke Daftar Materi
-                </Text>
+                {mutating ? (
+                  <ActivityIndicator size="small" color={COLORS.ivory} />
+                ) : (
+                  <Text style={[styles.modalPrimaryBtnText, fonts.sansBold]}>
+                    Simpan ke Google Sheets
+                  </Text>
+                )}
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.modalSecondaryBtn}
                 activeOpacity={0.82}
-                onPress={() => setAddMateriModalVisible(false)}
+                disabled={mutating}
+                onPress={() =>
+                  setKurikulumModal((prev) => ({ ...prev, visible: false }))
+                }
               >
                 <Text style={[styles.modalSecondaryBtnText, fonts.sansBold]}>
                   Batal
@@ -3378,12 +3261,14 @@ export default function App() {
         </View>
       </Modal>
 
-      {/* Modal Tambah Murid Baru */}
+      {/* Modal Tambah / Edit Progres (Admin) */}
       <Modal
-        visible={addStudentModalVisible}
+        visible={progresModal.visible}
         transparent
         animationType="fade"
-        onRequestClose={() => setAddStudentModalVisible(false)}
+        onRequestClose={() =>
+          setProgresModal((prev) => ({ ...prev, visible: false }))
+        }
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -3392,44 +3277,97 @@ export default function App() {
               showsVerticalScrollIndicator={false}
             >
               <Text style={[styles.modalTitle, fonts.loraBold]}>
-                Tambah Kartu Murid Baru
+                {progresModal.mode === 'edit'
+                  ? 'Edit Catatan Progres'
+                  : 'Catat Progres Murid'}
               </Text>
               <Text style={[styles.modalSub, fonts.sansRegular]}>
-                Buat profil murid lengkap dengan 12 stempel pertemuan.
+                Data akan tersimpan ke tab Progres Google Sheets.
               </Text>
 
-              <Text style={[styles.inputLabel, fonts.sansBold]}>
-                Nama Murid *
-              </Text>
+              <Text style={[styles.inputLabel, fonts.sansBold]}>Tanggal *</Text>
               <TextInput
                 style={[styles.textInput, fonts.sansRegular]}
-                value={newStudentName}
-                onChangeText={(text) => {
-                  setNewStudentName(text);
-                  if (newStudentError) setNewStudentError('');
-                }}
-                placeholder="Contoh: Fatimah Az-Zahra"
+                value={progresModal.tanggal}
+                onChangeText={(text) =>
+                  setProgresModal((prev) => ({
+                    ...prev,
+                    tanggal: text,
+                    error: '',
+                  }))
+                }
+                placeholder="Contoh: 26 Nov 2026"
                 placeholderTextColor={COLORS.textMuted}
               />
-              {newStudentError ? (
-                <Text style={[styles.errorText, fonts.sansBold]}>
-                  {newStudentError}
-                </Text>
-              ) : null}
 
-              <Text style={[styles.inputLabel, fonts.sansBold]}>Jenjang</Text>
+              <Text style={[styles.inputLabel, fonts.sansBold]}>
+                Nama Anak *
+              </Text>
+              {studentNamesPool.length > 0 && (
+                <View style={styles.chipWrap}>
+                  {studentNamesPool.map((nm) => {
+                    const selected = progresModal.namaAnak === nm;
+                    return (
+                      <TouchableOpacity
+                        key={nm}
+                        style={[
+                          styles.choiceChip,
+                          selected && styles.choiceChipActive,
+                        ]}
+                        activeOpacity={0.8}
+                        onPress={() =>
+                          setProgresModal((prev) => ({
+                            ...prev,
+                            namaAnak: nm,
+                            error: '',
+                          }))
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.choiceChipText,
+                            fonts.sansSemi,
+                            selected && styles.choiceChipTextActive,
+                          ]}
+                        >
+                          {nm}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+              <TextInput
+                style={[styles.textInput, fonts.sansRegular]}
+                value={progresModal.namaAnak}
+                onChangeText={(text) =>
+                  setProgresModal((prev) => ({
+                    ...prev,
+                    namaAnak: text,
+                    error: '',
+                  }))
+                }
+                placeholder="Ketik nama anak"
+                placeholderTextColor={COLORS.textMuted}
+              />
+
+              <Text style={[styles.inputLabel, fonts.sansBold]}>
+                Status Hadir
+              </Text>
               <View style={styles.chipWrap}>
-                {JENJANG_OPTIONS.map((jjg) => {
-                  const selected = newStudentJenjang === jjg;
+                {STATUS_HADIR_OPTIONS.map((st) => {
+                  const selected = progresModal.statusHadir === st;
                   return (
                     <TouchableOpacity
-                      key={jjg}
+                      key={st}
                       style={[
                         styles.choiceChip,
                         selected && styles.choiceChipActive,
                       ]}
                       activeOpacity={0.8}
-                      onPress={() => setNewStudentJenjang(jjg)}
+                      onPress={() =>
+                        setProgresModal((prev) => ({ ...prev, statusHadir: st }))
+                      }
                     >
                       <Text
                         style={[
@@ -3438,26 +3376,28 @@ export default function App() {
                           selected && styles.choiceChipTextActive,
                         ]}
                       >
-                        {jjg}
+                        {st}
                       </Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
 
-              <Text style={[styles.inputLabel, fonts.sansBold]}>Program</Text>
+              <Text style={[styles.inputLabel, fonts.sansBold]}>Pengajar</Text>
               <View style={styles.chipWrap}>
-                {PROGRAM_OPTIONS.map((prog) => {
-                  const selected = newStudentProgram === prog;
+                {PENGAJAR_OPTIONS.map((pg) => {
+                  const selected = progresModal.pengajar === pg;
                   return (
                     <TouchableOpacity
-                      key={prog}
+                      key={pg}
                       style={[
                         styles.choiceChip,
                         selected && styles.choiceChipActive,
                       ]}
                       activeOpacity={0.8}
-                      onPress={() => setNewStudentProgram(prog)}
+                      onPress={() =>
+                        setProgresModal((prev) => ({ ...prev, pengajar: pg }))
+                      }
                     >
                       <Text
                         style={[
@@ -3466,45 +3406,88 @@ export default function App() {
                           selected && styles.choiceChipTextActive,
                         ]}
                       >
-                        {prog}
+                        {pg}
                       </Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
-
-              <Text style={[styles.inputLabel, fonts.sansBold]}>Pengajar</Text>
               <TextInput
                 style={[styles.textInput, fonts.sansRegular]}
-                value={newStudentPengajar}
-                onChangeText={setNewStudentPengajar}
+                value={progresModal.pengajar}
+                onChangeText={(text) =>
+                  setProgresModal((prev) => ({ ...prev, pengajar: text }))
+                }
                 placeholder="Nama pengajar"
                 placeholderTextColor={COLORS.textMuted}
               />
 
-              <Text style={[styles.inputLabel, fonts.sansBold]}>Bulan</Text>
+              <Text style={[styles.inputLabel, fonts.sansBold]}>
+                Catatan Perkembangan
+              </Text>
+              <View style={styles.tagRow}>
+                {CAPAIAN_TAGS.map((tag) => {
+                  const active = progresModal.catatan.includes(tag);
+                  return (
+                    <TouchableOpacity
+                      key={tag}
+                      style={[styles.tagChip, active && styles.tagChipActive]}
+                      activeOpacity={0.78}
+                      onPress={() => toggleProgresTag(tag)}
+                    >
+                      <Text
+                        style={[
+                          styles.tagChipText,
+                          fonts.sansSemi,
+                          active && styles.tagChipTextActive,
+                        ]}
+                      >
+                        {tag}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
               <TextInput
-                style={[styles.textInput, fonts.sansRegular]}
-                value={newStudentBulan}
-                onChangeText={setNewStudentBulan}
-                placeholder="Contoh: November 2026"
+                style={[styles.noteTextInput, fonts.sansRegular]}
+                value={progresModal.catatan}
+                onChangeText={(text) =>
+                  setProgresModal((prev) => ({ ...prev, catatan: text }))
+                }
+                placeholder="Tulis catatan capaian belajar murid..."
                 placeholderTextColor={COLORS.textMuted}
+                multiline
+                textAlignVertical="top"
               />
 
-              <TouchableOpacity
-                style={styles.modalPrimaryBtn}
-                activeOpacity={0.82}
-                onPress={handleCreateStudent}
-              >
-                <Text style={[styles.modalPrimaryBtnText, fonts.sansBold]}>
-                  Simpan Kartu Murid
+              {progresModal.error ? (
+                <Text style={[styles.errorText, fonts.sansBold, { marginTop: 8 }]}>
+                  {progresModal.error}
                 </Text>
+              ) : null}
+
+              <TouchableOpacity
+                style={[styles.modalPrimaryBtn, { marginTop: 14 }]}
+                activeOpacity={0.82}
+                disabled={mutating}
+                onPress={handleSubmitProgres}
+              >
+                {mutating ? (
+                  <ActivityIndicator size="small" color={COLORS.ivory} />
+                ) : (
+                  <Text style={[styles.modalPrimaryBtnText, fonts.sansBold]}>
+                    Simpan ke Google Sheets
+                  </Text>
+                )}
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.modalSecondaryBtn}
                 activeOpacity={0.82}
-                onPress={() => setAddStudentModalVisible(false)}
+                disabled={mutating}
+                onPress={() =>
+                  setProgresModal((prev) => ({ ...prev, visible: false }))
+                }
               >
                 <Text style={[styles.modalSecondaryBtnText, fonts.sansBold]}>
                   Batal
@@ -3515,92 +3498,97 @@ export default function App() {
         </View>
       </Modal>
 
-      {/* Modal Pratinjau WhatsApp */}
+      {/* Modal Konfirmasi Hapus (Admin) */}
       <Modal
-        visible={waPreviewModal.visible}
+        visible={deleteConfirmModal.visible}
         transparent
         animationType="fade"
         onRequestClose={() =>
-          setWaPreviewModal({ visible: false, title: '', text: '' })
+          setDeleteConfirmModal({
+            visible: false,
+            sheet: '',
+            id: '',
+            label: '',
+          })
         }
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={[styles.modalTitle, fonts.loraBold]}>
-                {waPreviewModal.title}
-              </Text>
-              <Text style={[styles.modalSub, fonts.sansRegular]}>
-                Tujuan: +{WHATSAPP_NUMBER}
-              </Text>
-
-              <View style={styles.waPreviewBox}>
-                <Text style={[styles.waPreviewText, fonts.sansRegular]}>
-                  {waPreviewModal.text}
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                style={styles.modalPrimaryBtn}
-                activeOpacity={0.82}
-                onPress={() => {
-                  const textToSend = waPreviewModal.text;
-                  setWaPreviewModal({ visible: false, title: '', text: '' });
-                  openWhatsAppUrl(textToSend);
-                }}
-              >
-                <Text style={[styles.modalPrimaryBtnText, fonts.sansBold]}>
-                  Kirim ke WhatsApp Sekarang
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.modalSecondaryBtn}
-                activeOpacity={0.82}
-                onPress={() =>
-                  setWaPreviewModal({ visible: false, title: '', text: '' })
-                }
-              >
-                <Text style={[styles.modalSecondaryBtnText, fonts.sansBold]}>
-                  Tutup
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal Konfirmasi Hapus */}
-      <Modal
-        visible={deleteConfirmVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setDeleteConfirmVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
             <Text style={[styles.modalTitle, fonts.loraBold]}>
-              Hapus Profil Murid?
+              Hapus Data {deleteConfirmModal.sheet}?
             </Text>
             <Text style={[styles.modalBody, fonts.sansRegular]}>
-              Kartu absen milik “{activeStudent.nama || 'Murid Baru'}” akan
-              dihapus dari daftar sesi ini.
+              Apakah Anda yakin ingin menghapus “{deleteConfirmModal.label}” dari
+              Google Sheets?
             </Text>
 
             <TouchableOpacity
               style={styles.modalDangerBtn}
               activeOpacity={0.82}
-              onPress={handleDeleteStudent}
+              disabled={mutating}
+              onPress={handleConfirmDelete}
+            >
+              {mutating ? (
+                <ActivityIndicator size="small" color={COLORS.white} />
+              ) : (
+                <Text style={[styles.modalDangerBtnText, fonts.sansBold]}>
+                  Ya, Hapus Data
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalSecondaryBtn}
+              activeOpacity={0.82}
+              disabled={mutating}
+              onPress={() =>
+                setDeleteConfirmModal({
+                  visible: false,
+                  sheet: '',
+                  id: '',
+                  label: '',
+                })
+              }
+            >
+              <Text style={[styles.modalSecondaryBtnText, fonts.sansBold]}>
+                Batal
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Konfirmasi Keluar (Logout) */}
+      <Modal
+        visible={logoutModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLogoutModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={[styles.modalTitle, fonts.loraBold]}>
+              Keluar dari Akun?
+            </Text>
+            <Text style={[styles.modalBody, fonts.sansRegular]}>
+              Sesi atas nama “{currentUser.Nama_User || currentUser.Kode_Masuk}”
+              akan dihapus dari perangkat ini.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.modalDangerBtn}
+              activeOpacity={0.82}
+              onPress={handleConfirmLogout}
             >
               <Text style={[styles.modalDangerBtnText, fonts.sansBold]}>
-                Ya, Hapus Profil
+                Ya, Keluar
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.modalSecondaryBtn}
               activeOpacity={0.82}
-              onPress={() => setDeleteConfirmVisible(false)}
+              onPress={() => setLogoutModalVisible(false)}
             >
               <Text style={[styles.modalSecondaryBtnText, fonts.sansBold]}>
                 Batal
@@ -3675,7 +3663,144 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 
-  /* Scrapbook / Paper-cut Card */
+  /* Splash & Login */
+  splashContainer: {
+    flex: 1,
+    backgroundColor: COLORS.cream,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  splashLogoWrap: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: COLORS.ivory,
+    borderWidth: 2,
+    borderColor: COLORS.forest,
+    padding: 8,
+    marginBottom: 14,
+  },
+  splashTitle: {
+    fontSize: 24,
+    color: COLORS.moss,
+  },
+  splashSub: {
+    fontSize: 13.5,
+    color: COLORS.textMuted,
+    marginTop: 4,
+  },
+  loginScrollContent: {
+    paddingHorizontal: 18,
+    paddingBottom: 40,
+  },
+  loginBrandHeader: {
+    alignItems: 'center',
+    marginBottom: 22,
+  },
+  loginLogoCircle: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    backgroundColor: COLORS.ivory,
+    borderWidth: 2,
+    borderColor: COLORS.forest,
+    padding: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  loginTitle: {
+    fontSize: 26,
+    color: COLORS.moss,
+  },
+  loginSubtitle: {
+    fontSize: 14,
+    color: COLORS.forest,
+    marginTop: 3,
+  },
+  loginCardHeading: {
+    fontSize: 19,
+    color: COLORS.moss,
+    marginBottom: 6,
+  },
+  loginCardDesc: {
+    fontSize: 13.5,
+    color: COLORS.textMuted,
+    lineHeight: 20,
+    marginBottom: 14,
+  },
+  loginInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    borderWidth: 1.4,
+    borderColor: COLORS.forest,
+    paddingHorizontal: 14,
+    minHeight: 52,
+    marginBottom: 12,
+  },
+  loginTextInput: {
+    flex: 1,
+    fontSize: 15,
+    color: COLORS.moss,
+    paddingVertical: 10,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.dangerBg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.dangerText,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 12.5,
+    color: COLORS.dangerText,
+    lineHeight: 18,
+  },
+  loginSubmitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.forest,
+    borderRadius: 15,
+    minHeight: 54,
+    paddingHorizontal: 16,
+    marginTop: 4,
+  },
+  loginSubmitText: {
+    fontSize: 15.5,
+    color: COLORS.ivory,
+  },
+  loginInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  loginInfoTextCol: {
+    flex: 1,
+  },
+  loginInfoTitle: {
+    fontSize: 14,
+    color: COLORS.moss,
+    marginBottom: 2,
+  },
+  loginInfoDesc: {
+    fontSize: 12.5,
+    color: COLORS.textBody,
+    lineHeight: 18,
+  },
+
+  /* Scrapbook PaperCard */
   paperWrap: {
     position: 'relative',
     paddingRight: 4,
@@ -3715,7 +3840,7 @@ const styles = StyleSheet.create({
   heroBanner: {
     backgroundColor: COLORS.forest,
     paddingHorizontal: 18,
-    paddingBottom: 20,
+    paddingBottom: 18,
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
     borderBottomWidth: 3,
@@ -3729,39 +3854,39 @@ const styles = StyleSheet.create({
   heroTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 13,
   },
   logoFrame: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: COLORS.ivory,
     borderWidth: 1.8,
     borderColor: COLORS.goldBorder,
     padding: 5,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 13,
+    marginRight: 12,
   },
   logoImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 25,
+    borderRadius: 24,
   },
   heroTitleCol: {
     flex: 1,
     marginRight: 8,
   },
   heroTitle: {
-    fontSize: 22,
+    fontSize: 21,
     color: COLORS.ivory,
   },
   heroTagline: {
-    fontSize: 13,
+    fontSize: 12.5,
     color: COLORS.goldSoft,
     marginTop: 2,
   },
-  tentangHeaderBtn: {
+  logoutPillBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -3769,11 +3894,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.goldBorder,
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     paddingVertical: 7,
     minHeight: 36,
   },
-  tentangHeaderBtnText: {
+  logoutPillText: {
     fontSize: 12,
     color: COLORS.moss,
   },
@@ -3790,11 +3915,15 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 10,
   },
+  heroUserGreeting: {
+    fontSize: 14,
+    color: COLORS.goldSoft,
+    marginBottom: 2,
+  },
   heroGreetingText: {
-    flex: 1,
-    fontSize: 13,
+    fontSize: 12.5,
     color: COLORS.cream,
-    lineHeight: 19,
+    lineHeight: 18,
   },
 
   subHeaderBanner: {
@@ -3842,7 +3971,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   subHeaderTitle: {
-    fontSize: 18,
+    fontSize: 17.5,
     color: COLORS.ivory,
   },
   subHeaderSubtitle: {
@@ -3850,31 +3979,83 @@ const styles = StyleSheet.create({
     color: COLORS.cream,
     marginTop: 1,
   },
-  headerStarPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: COLORS.goldSoft,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.goldBorder,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-  },
-  headerStarText: {
-    fontSize: 13,
-    color: COLORS.moss,
-  },
-  headerIconPill: {
-    width: 38,
-    height: 38,
+  headerRefreshBtn: {
+    width: 40,
+    height: 40,
     borderRadius: 14,
     backgroundColor: COLORS.moss,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  /* Headings & Helpers */
+  /* Sync & Error Banners */
+  syncErrorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  syncErrorTitle: {
+    fontSize: 13.5,
+    color: COLORS.dangerText,
+  },
+  syncErrorDesc: {
+    fontSize: 12,
+    color: COLORS.textBody,
+    marginTop: 2,
+    lineHeight: 17,
+  },
+  syncRetryBtn: {
+    backgroundColor: COLORS.forest,
+    borderRadius: 10,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+  },
+  syncRetryText: {
+    fontSize: 12,
+    color: COLORS.ivory,
+  },
+
+  syncStripRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  syncStripLeft: {
+    flex: 1,
+  },
+  liveDotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.forest,
+  },
+  syncStripTitle: {
+    fontSize: 14.5,
+    color: COLORS.moss,
+    marginTop: 3,
+  },
+  syncNowBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.forest,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    minHeight: 38,
+  },
+  syncNowText: {
+    fontSize: 12,
+    color: COLORS.ivory,
+  },
+
+  /* Common Headings */
   sectionHeadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3904,13 +4085,15 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginBottom: 12,
   },
-  cardTitleIconRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  emptyStateText: {
+    fontSize: 13.5,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+    paddingVertical: 8,
   },
 
-  /* Beranda */
+  /* Beranda Session & Shortcuts */
   resetTextBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3930,7 +4113,7 @@ const styles = StyleSheet.create({
   durationSwitchRow: {
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 14,
+    marginBottom: 12,
   },
   durationBtn: {
     flex: 1,
@@ -3943,7 +4126,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
-    paddingHorizontal: 10,
   },
   durationBtnActive: {
     backgroundColor: COLORS.forest,
@@ -3955,9 +4137,6 @@ const styles = StyleSheet.create({
   durationBtnTextActive: {
     color: COLORS.ivory,
   },
-  sessionProgressRow: {
-    marginBottom: 14,
-  },
   sessionProgressText: {
     fontSize: 12.5,
     color: COLORS.textBody,
@@ -3968,6 +4147,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: COLORS.creamDark,
     overflow: 'hidden',
+    marginBottom: 12,
   },
   sessionMiniFill: {
     height: '100%',
@@ -4022,9 +4202,6 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     color: COLORS.moss,
   },
-  stageTitleDone: {
-    color: COLORS.forest,
-  },
   stageDurationBadge: {
     backgroundColor: COLORS.ivory,
     borderRadius: 8,
@@ -4043,31 +4220,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  quickCardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  quickIconBadge: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
-    backgroundColor: COLORS.forest,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickTextCol: {
-    flex: 1,
-  },
-  quickTitle: {
-    fontSize: 16.5,
-    color: COLORS.moss,
-  },
-  quickSub: {
-    fontSize: 12.5,
-    color: COLORS.forest,
-    marginTop: 2,
-  },
   shortcutDualRow: {
     flexDirection: 'row',
     gap: 12,
@@ -4079,7 +4231,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 12,
-    backgroundColor: COLORS.sage,
+    backgroundColor: COLORS.ivory,
     borderWidth: 1,
     borderColor: COLORS.forest,
     alignItems: 'center',
@@ -4131,7 +4283,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  /* Kurikulum Tab */
+  /* Kurikulum */
   addSmallBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4146,6 +4298,30 @@ const styles = StyleSheet.create({
   addSmallBtnText: {
     fontSize: 12.5,
     color: COLORS.ivory,
+  },
+  backToListBtn: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: COLORS.ivory,
+    borderRadius: 14,
+    borderWidth: 1.2,
+    borderColor: COLORS.forest,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    minHeight: 42,
+    marginBottom: 10,
+  },
+  backToListText: {
+    fontSize: 13,
+    color: COLORS.forest,
+  },
+  monthDetailTitle: {
+    fontSize: 19,
+    color: COLORS.moss,
+    marginTop: 3,
+    marginBottom: 4,
   },
   monthCardTopRow: {
     flexDirection: 'row',
@@ -4165,52 +4341,6 @@ const styles = StyleSheet.create({
     color: COLORS.ivory,
     letterSpacing: 0.7,
   },
-  monthStatsChip: {
-    backgroundColor: COLORS.goldSoft,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: COLORS.goldBorder,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  monthStatsText: {
-    fontSize: 11.5,
-    color: COLORS.moss,
-  },
-  monthCardTitle: {
-    fontSize: 17,
-    color: COLORS.moss,
-    lineHeight: 24,
-    marginBottom: 6,
-  },
-  monthCardTarget: {
-    fontSize: 13,
-    color: COLORS.textBody,
-    lineHeight: 19,
-    marginBottom: 12,
-  },
-  monthCardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  predikatSmallBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: COLORS.cream,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.sageDark,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-  },
-  predikatSmallText: {
-    fontSize: 11.5,
-    color: COLORS.forest,
-  },
   monthOpenCue: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4220,64 +4350,23 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     color: COLORS.forest,
   },
-
-  /* Kurikulum Level 2 */
-  backToListBtn: {
-    alignSelf: 'flex-start',
+  monthCardTitle: {
+    fontSize: 17.5,
+    color: COLORS.moss,
+    marginBottom: 8,
+  },
+  previewRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    backgroundColor: COLORS.ivory,
-    borderRadius: 14,
-    borderWidth: 1.2,
-    borderColor: COLORS.forest,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    minHeight: 44,
-    marginBottom: 14,
+    marginBottom: 4,
   },
-  backToListText: {
-    fontSize: 13.5,
-    color: COLORS.forest,
-  },
-  monthDetailHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginBottom: 10,
-  },
-  monthDetailTitleCol: {
+  previewRowText: {
     flex: 1,
+    fontSize: 12.5,
+    color: COLORS.textBody,
   },
-  monthDetailTitle: {
-    fontSize: 18,
-    color: COLORS.moss,
-    lineHeight: 25,
-    marginTop: 3,
-  },
-  monthPctPill: {
-    backgroundColor: COLORS.forest,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  monthPctPillText: {
-    fontSize: 14,
-    color: COLORS.ivory,
-  },
-  targetEditInput: {
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
-    borderWidth: 1.2,
-    borderColor: COLORS.sageDark,
-    paddingHorizontal: 13,
-    paddingVertical: 11,
-    minHeight: 74,
-    fontSize: 13.5,
-    color: COLORS.moss,
-    lineHeight: 20,
-  },
+
   materiTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4297,22 +4386,9 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     color: COLORS.moss,
   },
-  materiStatusTag: {
-    borderRadius: 9,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  materiStatusTagDone: {
-    backgroundColor: COLORS.forest,
-  },
-  materiStatusTagPending: {
-    backgroundColor: COLORS.goldSoft,
-    borderWidth: 1,
-    borderColor: COLORS.goldBorder,
-  },
-  materiStatusTagText: {
-    fontSize: 11,
-    color: COLORS.moss,
+  idTinyText: {
+    fontSize: 10.5,
+    color: COLORS.textMuted,
   },
   materiJudul: {
     fontSize: 16,
@@ -4320,115 +4396,52 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   materiDesc: {
-    fontSize: 13,
+    fontSize: 13.5,
     color: COLORS.textBody,
-    lineHeight: 19,
-    marginBottom: 12,
+    lineHeight: 20,
   },
-  materiCheckBtn: {
+  adminActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.sageDark,
+  },
+  adminEditBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    minHeight: 44,
+    gap: 6,
+    backgroundColor: COLORS.sage,
     borderRadius: 12,
-    borderWidth: 1.2,
+    borderWidth: 1,
     borderColor: COLORS.forest,
-    backgroundColor: COLORS.cream,
-    paddingHorizontal: 14,
+    minHeight: 42,
   },
-  materiCheckBtnActive: {
-    backgroundColor: COLORS.forest,
-  },
-  materiCheckBtnText: {
+  adminEditBtnText: {
     fontSize: 13,
     color: COLORS.forest,
   },
-  materiCheckBtnTextActive: {
-    color: COLORS.ivory,
-  },
-  predikatCol: {
-    gap: 8,
-    marginBottom: 12,
-  },
-  predikatBtn: {
+  adminDeleteBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    backgroundColor: COLORS.cream,
-    borderRadius: 13,
-    borderWidth: 1.2,
-    borderColor: COLORS.forest,
-    minHeight: 46,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: COLORS.dangerBg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.dangerText,
+    minHeight: 42,
   },
-  predikatBtnActive: {
-    backgroundColor: COLORS.forest,
-  },
-  predikatBtnText: {
-    fontSize: 13.5,
-    color: COLORS.moss,
-  },
-  predikatBtnTextActive: {
-    color: COLORS.ivory,
+  adminDeleteBtnText: {
+    fontSize: 13,
+    color: COLORS.dangerText,
   },
 
-  /* Kartu Absen */
-  memberSwitchScroll: {
-    paddingBottom: 14,
-    gap: 10,
-  },
-  memberPill: {
-    backgroundColor: COLORS.ivory,
-    borderRadius: 16,
-    borderWidth: 1.2,
-    borderColor: COLORS.forest,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    minWidth: 152,
-  },
-  memberPillActive: {
-    backgroundColor: COLORS.forest,
-  },
-  memberPillTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  memberPillName: {
-    fontSize: 13.5,
-    color: COLORS.moss,
-  },
-  memberPillNameActive: {
-    color: COLORS.ivory,
-  },
-  memberJenjangChip: {
-    backgroundColor: COLORS.sage,
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  memberJenjangChipActive: {
-    backgroundColor: COLORS.goldSoft,
-  },
-  memberJenjangText: {
-    fontSize: 10.5,
-    color: COLORS.forest,
-  },
-  memberJenjangTextActive: {
-    color: COLORS.moss,
-  },
-  memberPillCount: {
-    fontSize: 11.5,
-    color: COLORS.textMuted,
-    marginTop: 3,
-  },
-  memberPillCountActive: {
-    color: COLORS.cream,
-  },
-
+  /* Progres */
   memberCardTopBand: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4442,125 +4455,209 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   memberCardLogoWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: COLORS.cream,
     borderWidth: 1.2,
     borderColor: COLORS.forest,
     padding: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   memberCardLogo: {
     width: '100%',
     height: '100%',
-    borderRadius: 16,
+    borderRadius: 17,
   },
   memberCardOrg: {
-    fontSize: 13,
-    color: COLORS.forest,
-    letterSpacing: 0.6,
+    fontSize: 16,
+    color: COLORS.moss,
   },
   memberCardLabel: {
     fontSize: 10,
     color: COLORS.textMuted,
-    letterSpacing: 0.9,
+    letterSpacing: 0.7,
+    marginTop: 1,
   },
-  memberCardBadge: {
+  progressBadge: {
     backgroundColor: COLORS.forest,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    borderRadius: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
   },
-  memberCardBadgeText: {
-    fontSize: 12,
+  progressBadgeText: {
+    fontSize: 12.5,
     color: COLORS.ivory,
   },
-  memberCardDivider: {
-    height: 1,
-    backgroundColor: COLORS.sageDark,
-    marginVertical: 12,
+  progressLabelLine: {
+    fontSize: 12.5,
+    color: COLORS.forest,
+    marginBottom: 6,
   },
-  memberCardName: {
-    fontSize: 20,
-    color: COLORS.moss,
-    marginBottom: 10,
-  },
-  memberCardMetaGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 12,
-  },
-  memberCardMetaItem: {
-    width: '47%',
-    backgroundColor: COLORS.cream,
-    borderRadius: 12,
+  progressTrack: {
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.creamDark,
     borderWidth: 1,
     borderColor: COLORS.sageDark,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    overflow: 'hidden',
+    marginBottom: 12,
   },
-  metaKey: {
-    fontSize: 11,
+  progressFill: {
+    height: '100%',
+    backgroundColor: COLORS.forest,
+    borderRadius: 5,
+  },
+  stampMiniWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  stampMiniCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stampMiniCircleActive: {
+    backgroundColor: COLORS.forest,
+  },
+  stampMiniCircleIdle: {
+    backgroundColor: COLORS.cream,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: COLORS.forest,
+  },
+  stampMiniNum: {
+    fontSize: 11.5,
     color: COLORS.textMuted,
   },
-  metaVal: {
-    fontSize: 13,
-    color: COLORS.moss,
-    marginTop: 2,
+  memberSwitchScroll: {
+    paddingBottom: 14,
+    gap: 8,
   },
-  metaValAccent: {
-    fontSize: 13,
-    color: COLORS.forest,
-    marginTop: 2,
-  },
-  memberCardActionsRow: {
+  progresCardTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
+    gap: 8,
+    marginBottom: 8,
   },
-  editProfileToggleBtn: {
-    flex: 1,
+  progresDateBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
+    gap: 5,
+  },
+  progresDateText: {
+    fontSize: 12,
+    color: COLORS.forest,
+  },
+  statusHadirPill: {
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  statusHadirYes: {
+    backgroundColor: COLORS.forest,
+  },
+  statusHadirOther: {
+    backgroundColor: COLORS.goldSoft,
+    borderWidth: 1,
+    borderColor: COLORS.goldBorder,
+  },
+  statusHadirText: {
+    fontSize: 11,
+    color: COLORS.moss,
+  },
+  progresAnakName: {
+    fontSize: 16,
+    color: COLORS.moss,
+    marginBottom: 4,
+  },
+  progresCatatan: {
+    fontSize: 13.5,
+    color: COLORS.textBody,
+    lineHeight: 20,
+  },
+  progresMetaFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  pengajarBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  pengajarBadgeText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+
+  /* Saran */
+  waliSenderInfo: {
+    backgroundColor: COLORS.sage,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  waliSenderText: {
+    fontSize: 12.5,
+    color: COLORS.forest,
+  },
+  saranTextArea: {
+    backgroundColor: COLORS.white,
+    borderRadius: 14,
+    borderWidth: 1.2,
+    borderColor: COLORS.forest,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    minHeight: 110,
+    fontSize: 14,
+    color: COLORS.moss,
+    lineHeight: 21,
+    marginBottom: 12,
+  },
+  saranFeedbackBox: {
     backgroundColor: COLORS.sage,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.forest,
-    minHeight: 42,
-    paddingHorizontal: 12,
+    padding: 10,
+    marginBottom: 12,
   },
-  editProfileToggleText: {
+  saranFeedbackText: {
+    fontSize: 12.5,
+    color: COLORS.forest,
+  },
+  materiCheckBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1.2,
+    borderColor: COLORS.forest,
+    backgroundColor: COLORS.cream,
+    paddingHorizontal: 14,
+    marginTop: 12,
+  },
+  materiCheckBtnActive: {
+    backgroundColor: COLORS.forest,
+  },
+  materiCheckBtnText: {
     fontSize: 13,
     color: COLORS.forest,
   },
-  deleteProfileBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: COLORS.dangerBg,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.dangerText,
-    minHeight: 42,
-    paddingHorizontal: 12,
-  },
-  deleteProfileBtnText: {
-    fontSize: 12.5,
-    color: COLORS.dangerText,
-  },
-  inlineProfileForm: {
-    marginTop: 14,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.sageDark,
+  materiCheckBtnTextActive: {
+    color: COLORS.ivory,
   },
 
+  /* Inputs & Chips */
   inputLabel: {
     fontSize: 12.5,
     color: COLORS.moss,
@@ -4579,15 +4676,23 @@ const styles = StyleSheet.create({
     color: COLORS.moss,
     marginBottom: 10,
   },
+  noteTextInput: {
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    borderWidth: 1.2,
+    borderColor: COLORS.sageDark,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 74,
+    fontSize: 13.5,
+    color: COLORS.moss,
+    lineHeight: 20,
+  },
   chipWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
     marginBottom: 10,
-  },
-  bulanScroll: {
-    gap: 8,
-    paddingBottom: 10,
   },
   choiceChip: {
     backgroundColor: COLORS.cream,
@@ -4609,178 +4714,24 @@ const styles = StyleSheet.create({
   choiceChipTextActive: {
     color: COLORS.ivory,
   },
-
-  progressHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  progressTitleCol: {
-    flex: 1,
-  },
-  progressBadge: {
-    backgroundColor: COLORS.forest,
-    borderRadius: 12,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-  },
-  progressBadgeText: {
-    fontSize: 13,
-    color: COLORS.ivory,
-  },
-  progressLabelLine: {
-    fontSize: 12.5,
-    color: COLORS.forest,
-    marginBottom: 6,
-  },
-  progressTrack: {
-    height: 10,
-    borderRadius: 5,
+  filterPill: {
     backgroundColor: COLORS.ivory,
-    borderWidth: 1,
-    borderColor: COLORS.sageDark,
-    overflow: 'hidden',
-    marginBottom: 12,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: COLORS.forest,
-    borderRadius: 5,
-  },
-
-  stampGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  ticketCell: {
-    width: '31.8%',
-    backgroundColor: COLORS.ivory,
-    borderRadius: 16,
-    borderWidth: 1.2,
-    borderColor: COLORS.sageDark,
-    paddingVertical: 9,
-    paddingHorizontal: 5,
-    marginBottom: 10,
-    alignItems: 'center',
-  },
-  ticketCellHadir: {
-    borderColor: COLORS.forest,
-    backgroundColor: COLORS.cream,
-  },
-  ticketNoText: {
-    fontSize: 10,
-    color: COLORS.textMuted,
-    letterSpacing: 0.6,
-    marginBottom: 6,
-  },
-  circularStamp: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
-  circularStampEmpty: {
-    backgroundColor: COLORS.cream,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: COLORS.forest,
-  },
-  circularStampHadir: {
-    backgroundColor: COLORS.forest,
-    borderWidth: 2,
-    borderColor: COLORS.moss,
-  },
-  stampNumberText: {
-    fontSize: 18,
-    color: COLORS.forest,
-  },
-  stampCapText: {
-    fontSize: 9,
-    color: COLORS.ivory,
-    letterSpacing: 0.7,
-    marginTop: 1,
-  },
-  ticketDateLabel: {
-    fontSize: 10.5,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-  },
-  ticketDateLabelHadir: {
-    color: COLORS.moss,
-  },
-
-  noteCardItem: {
-    backgroundColor: COLORS.cream,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.sageDark,
-    padding: 12,
-    marginBottom: 12,
-  },
-  noteCardItemHadir: {
-    backgroundColor: COLORS.sage,
-    borderColor: COLORS.forest,
-  },
-  noteTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 8,
-  },
-  noteTitleGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  noteRoundNum: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.ivory,
+    borderRadius: 18,
     borderWidth: 1.2,
     borderColor: COLORS.forest,
-    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    minHeight: 40,
     justifyContent: 'center',
   },
-  noteRoundNumHadir: {
+  filterPillActive: {
     backgroundColor: COLORS.forest,
   },
-  noteRoundNumText: {
+  filterPillText: {
     fontSize: 12.5,
-    color: COLORS.forest,
-  },
-  noteRoundNumTextHadir: {
-    color: COLORS.ivory,
-  },
-  noteItemTitle: {
-    fontSize: 14,
     color: COLORS.moss,
   },
-  noteStampBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: COLORS.ivory,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.forest,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  noteStampBtnHadir: {
-    backgroundColor: COLORS.forest,
-  },
-  noteStampBtnText: {
-    fontSize: 11.5,
-    color: COLORS.forest,
-  },
-  noteStampBtnTextHadir: {
+  filterPillTextActive: {
     color: COLORS.ivory,
   },
   tagRow: {
@@ -4808,36 +4759,7 @@ const styles = StyleSheet.create({
   tagChipTextActive: {
     color: COLORS.ivory,
   },
-  noteTextInput: {
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.sageDark,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minHeight: 58,
-    fontSize: 13.5,
-    color: COLORS.moss,
-    lineHeight: 20,
-  },
 
-  waHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 14,
-  },
-  waIconBadge: {
-    width: 46,
-    height: 46,
-    borderRadius: 15,
-    backgroundColor: COLORS.forest,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  waHeaderTextCol: {
-    flex: 1,
-  },
   waPrimaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4845,33 +4767,23 @@ const styles = StyleSheet.create({
     gap: 9,
     backgroundColor: COLORS.forest,
     borderRadius: 15,
-    minHeight: 54,
+    minHeight: 52,
     paddingHorizontal: 16,
-    marginBottom: 10,
   },
   waPrimaryBtnText: {
     fontSize: 14,
     color: COLORS.ivory,
-    textAlign: 'center',
-  },
-  waPreviewBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: COLORS.ivory,
-    borderRadius: 14,
-    borderWidth: 1.2,
-    borderColor: COLORS.forest,
-    minHeight: 46,
-    paddingHorizontal: 16,
-  },
-  waPreviewBtnText: {
-    fontSize: 13.5,
-    color: COLORS.forest,
   },
 
   /* Saktah Play */
+  playIntroRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  playIntroTextCol: {
+    flex: 1,
+  },
   playModePillWrap: {
     flexDirection: 'row',
     backgroundColor: COLORS.creamDark,
@@ -4902,35 +4814,6 @@ const styles = StyleSheet.create({
   playModeBtnTextActive: {
     color: COLORS.ivory,
   },
-  playIntroRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  playIntroTextCol: {
-    flex: 1,
-  },
-  filterPill: {
-    backgroundColor: COLORS.ivory,
-    borderRadius: 18,
-    borderWidth: 1.2,
-    borderColor: COLORS.forest,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    minHeight: 40,
-    justifyContent: 'center',
-  },
-  filterPillActive: {
-    backgroundColor: COLORS.forest,
-  },
-  filterPillText: {
-    fontSize: 13,
-    color: COLORS.moss,
-  },
-  filterPillTextActive: {
-    color: COLORS.ivory,
-  },
-
   foldFrontTouch: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4948,35 +4831,6 @@ const styles = StyleSheet.create({
   },
   foldFrontTextCol: {
     flex: 1,
-  },
-  foldBadgeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 4,
-  },
-  foldCategoryChip: {
-    backgroundColor: COLORS.creamDark,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  foldCategoryText: {
-    fontSize: 10.5,
-    color: COLORS.forest,
-  },
-  foldDoneChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: COLORS.forest,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  foldDoneText: {
-    fontSize: 10.5,
-    color: COLORS.ivory,
   },
   foldTitle: {
     fontSize: 16,
@@ -5031,16 +4885,11 @@ const styles = StyleSheet.create({
     borderColor: COLORS.forest,
     padding: 12,
   },
-  challengeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 5,
-  },
   challengeLabel: {
     fontSize: 11,
     color: COLORS.forest,
     letterSpacing: 0.6,
+    marginBottom: 4,
   },
   challengeText: {
     fontSize: 13.5,
@@ -5070,13 +4919,10 @@ const styles = StyleSheet.create({
   challengeBtnTextDone: {
     color: COLORS.ivory,
   },
-
-  /* Quiz */
   quizTopBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
   },
   quizProgressLabel: {
     fontSize: 14,
@@ -5096,38 +4942,6 @@ const styles = StyleSheet.create({
   quizStarCounterText: {
     fontSize: 13,
     color: COLORS.moss,
-  },
-  quizTenStarsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  miniStarNode: {
-    width: 26,
-    height: 26,
-    borderRadius: 9,
-    backgroundColor: COLORS.ivory,
-    borderWidth: 1,
-    borderColor: COLORS.sageDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  miniStarNodeCurrent: {
-    borderColor: COLORS.forest,
-    borderWidth: 1.8,
-  },
-  miniStarNodeRight: {
-    backgroundColor: COLORS.goldSoft,
-    borderColor: COLORS.gold,
-  },
-  miniStarNodeWrong: {
-    backgroundColor: COLORS.dangerBg,
-    borderColor: COLORS.dangerText,
-  },
-  miniStarNum: {
-    fontSize: 11,
-    color: COLORS.textMuted,
   },
   levelBadge: {
     alignSelf: 'flex-start',
@@ -5175,28 +4989,17 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   quizFeedbackCard: {
+    backgroundColor: COLORS.sage,
     borderRadius: 14,
     borderWidth: 1.2,
+    borderColor: COLORS.forest,
     padding: 14,
     marginTop: 6,
-  },
-  quizFeedbackRight: {
-    backgroundColor: COLORS.sage,
-    borderColor: COLORS.forest,
-  },
-  quizFeedbackTryAgain: {
-    backgroundColor: COLORS.goldSoft,
-    borderColor: COLORS.goldBorder,
-  },
-  quizFeedbackHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
   },
   quizFeedbackHeading: {
     fontSize: 14.5,
     color: COLORS.moss,
+    marginBottom: 4,
   },
   quizFeedbackBody: {
     fontSize: 13.5,
@@ -5211,7 +5014,7 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: COLORS.forest,
     borderRadius: 14,
-    minHeight: 52,
+    minHeight: 50,
     paddingHorizontal: 16,
     width: '100%',
   },
@@ -5219,26 +5022,6 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     color: COLORS.ivory,
   },
-  quizSecondaryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: COLORS.cream,
-    borderRadius: 14,
-    borderWidth: 1.2,
-    borderColor: COLORS.forest,
-    minHeight: 48,
-    paddingHorizontal: 16,
-    width: '100%',
-    marginTop: 10,
-  },
-  quizSecondaryBtnText: {
-    fontSize: 14,
-    color: COLORS.forest,
-  },
-
-  /* Certificate */
   certContainer: {
     alignItems: 'center',
     paddingVertical: 6,
@@ -5277,7 +5060,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 7,
-    marginBottom: 14,
+    marginBottom: 18,
   },
   certStarChip: {
     width: 34,
@@ -5295,15 +5078,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.cream,
     borderColor: COLORS.sageDark,
   },
-  certMessage: {
-    fontSize: 13.5,
-    color: COLORS.textBody,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 18,
-  },
 
-  /* Halaman Tentang */
+  /* Tentang */
   aboutHeroRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -5318,8 +5094,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: COLORS.forest,
     padding: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   aboutLogoImg: {
     width: '100%',
@@ -5348,35 +5122,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.sageDark,
     padding: 13,
   },
-  philosophyRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    marginBottom: 14,
-  },
-  philosophyIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    backgroundColor: COLORS.ivory,
-    borderWidth: 1,
-    borderColor: COLORS.forest,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  philosophyTextCol: {
-    flex: 1,
-  },
-  philosophyTitle: {
-    fontSize: 15,
-    color: COLORS.moss,
-    marginBottom: 2,
-  },
-  philosophyDesc: {
-    fontSize: 13,
-    color: COLORS.textBody,
-    lineHeight: 19,
-  },
   consultTitle: {
     fontSize: 18,
     color: COLORS.ivory,
@@ -5395,7 +5140,7 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: COLORS.ivory,
     borderRadius: 14,
-    minHeight: 52,
+    minHeight: 50,
     paddingHorizontal: 14,
   },
   consultBtnText: {
@@ -5410,12 +5155,12 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: Platform.OS === 'android' ? 14 : 12,
     alignItems: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
   },
   floatingPillWrap: {
     position: 'relative',
     width: '100%',
-    maxWidth: 540,
+    maxWidth: 560,
     paddingRight: 3,
     paddingBottom: 4,
   },
@@ -5435,25 +5180,25 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     borderWidth: 1.5,
     borderColor: COLORS.forest,
-    padding: 6,
-    gap: 4,
+    padding: 5,
+    gap: 2,
   },
   floatingTabItem: {
     flex: 1,
-    minHeight: 52,
+    minHeight: 50,
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 2,
   },
   floatingTabItemActive: {
     backgroundColor: COLORS.ivory,
   },
   floatingTabLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: COLORS.cream,
-    marginTop: 3,
+    marginTop: 2,
     textAlign: 'center',
   },
   floatingTabLabelActive: {
@@ -5538,20 +5283,6 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 12,
     color: COLORS.dangerText,
-    marginTop: -4,
-    marginBottom: 10,
-  },
-  waPreviewBox: {
-    backgroundColor: COLORS.white,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.sageDark,
-    padding: 12,
-    marginBottom: 14,
-  },
-  waPreviewText: {
-    fontSize: 13,
-    color: COLORS.moss,
-    lineHeight: 20,
+    marginBottom: 8,
   },
 });
