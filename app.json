@@ -18,13 +18,19 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo-saktah.png",
         "backgroundColor": "#f4efdc"
-      }
+      },
+      "package": "com.saktah.saktahtarbiyahapp"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "b2012c40-1178-4267-958c-b2958ff7f017"
+      }
+    }
   }
 }
