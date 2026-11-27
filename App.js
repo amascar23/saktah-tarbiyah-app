@@ -19,6 +19,7 @@ import {
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Clipboard from 'expo-clipboard';
 import { useFonts } from 'expo-font';
 import { Lora_600SemiBold, Lora_700Bold } from '@expo-google-fonts/lora';
 import {
@@ -365,6 +366,9 @@ function normalizeAkunRow(row) {
     Peran: normalizeText(row.Peran ?? row.peran).trim().toLowerCase(),
     Nama_User: normalizeText(row.Nama_User ?? row.nama_user).trim(),
     Nama_Anak: normalizeText(row.Nama_Anak ?? row.nama_anak).trim(),
+    Jenjang_Kelas: normalizeText(
+      row.Jenjang_Kelas ?? row.jenjang_kelas ?? row.Jenjang ?? row.jenjang
+    ).trim(),
   };
 }
 
@@ -586,8 +590,10 @@ export default function App() {
     error: '',
   });
 
-  // Progres Filter & Modal
+  // Progres Filter, Roster & Modal
   const [selectedAnakFilter, setSelectedAnakFilter] = useState('Semua');
+  const [waliRosterOpen, setWaliRosterOpen] = useState(true);
+  const [copiedKode, setCopiedKode] = useState('');
   const [progresModal, setProgresModal] = useState({
     visible: false,
     mode: 'add',
@@ -860,22 +866,100 @@ export default function App() {
   };
 
   /* CRUD: Progres (Admin Only) */
+  const waliAccounts = useMemo(() => {
+    return akunList.filter((a) => a.Peran === 'wali' && a.Nama_Anak);
+  }, [akunList]);
+
+  const jenjangByAnak = useMemo(() => {
+    const map = {};
+    waliAccounts.forEach((a) => {
+      const key = a.Nama_Anak.trim().toLowerCase();
+      if (key && a.Jenjang_Kelas) {
+        map[key] = a.Jenjang_Kelas;
+      }
+    });
+    return map;
+  }, [waliAccounts]);
+
+  const waliStudentChoices = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    waliAccounts.forEach((a) => {
+      const key = a.Nama_Anak.trim().toLowerCase();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        list.push({
+          namaAnak: a.Nama_Anak,
+          jenjangKelas: a.Jenjang_Kelas,
+          namaWali: a.Nama_User,
+          kodeMasuk: a.Kode_Masuk,
+        });
+      }
+    });
+    return list;
+  }, [waliAccounts]);
+
   const studentNamesPool = useMemo(() => {
     const names = new Set();
-    akunList.forEach((a) => {
+    waliAccounts.forEach((a) => {
       if (a.Nama_Anak) names.add(a.Nama_Anak);
     });
     progresList.forEach((p) => {
       if (p.Nama_Anak) names.add(p.Nama_Anak);
     });
     return Array.from(names);
-  }, [akunList, progresList]);
+  }, [waliAccounts, progresList]);
+
+  const handleCopyKodeMasuk = async (kode) => {
+    if (!kode) return;
+    try {
+      await Clipboard.setStringAsync(kode);
+    } catch (err) {
+      if (
+        Platform.OS === 'web' &&
+        typeof navigator !== 'undefined' &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.writeText === 'function'
+      ) {
+        try {
+          await navigator.clipboard.writeText(kode);
+        } catch (webErr) {
+          // Ignore clipboard permission fallback error
+        }
+      }
+    }
+    setCopiedKode(kode);
+    setTimeout(() => {
+      setCopiedKode((prev) => (prev === kode ? '' : prev));
+    }, 2500);
+  };
+
+  const handleShareKodeWhatsApp = (acc) => {
+    const jenjangText = acc.Jenjang_Kelas ? ` (${acc.Jenjang_Kelas})` : '';
+    const pesan = [
+      `Assalamu'alaikum ${acc.Nama_User || 'Ayah/Bunda'},`,
+      `Berikut kode masuk aplikasi *Saktah Tarbiyah* untuk memantau kurikulum dan perkembangan belajar *${acc.Nama_Anak}*${jenjangText}:`,
+      '',
+      `Kode Masuk: *${acc.Kode_Masuk}*`,
+      '',
+      'Silakan masukkan kode tersebut pada halaman Masuk aplikasi. Terima kasih.',
+    ].join('\n');
+    const url = 'https://wa.me/?text=' + encodeURIComponent(pesan);
+    Linking.openURL(url).catch(() => {
+      setInfoModal({
+        visible: true,
+        title: 'Tidak Dapat Membuka WhatsApp',
+        message:
+          'Silakan gunakan tombol Salin Kode lalu tempel secara manual di WhatsApp orang tua.',
+      });
+    });
+  };
 
   const openAddProgres = () => {
     const defaultStudent =
       selectedAnakFilter !== 'Semua'
         ? selectedAnakFilter
-        : studentNamesPool[0] || '';
+        : waliStudentChoices[0]?.namaAnak || '';
     const defaultPengajar =
       currentUser?.Nama_User &&
       PENGAJAR_OPTIONS.some((p) =>
@@ -2144,7 +2228,18 @@ export default function App() {
                     : selectedAnakFilter}
                 </Text>
                 <Text style={[styles.memberCardLabel, fonts.sansBold]}>
-                  {isWali ? 'LAPORAN PROGRES ANANDA (READ-ONLY)' : 'REKAP PROGRES MURID'}
+                  {isWali
+                    ? `LAPORAN PROGRES ANANDA${
+                        currentUser.Jenjang_Kelas
+                          ? ` • ${currentUser.Jenjang_Kelas.toUpperCase()}`
+                          : ''
+                      } (READ-ONLY)`
+                    : selectedAnakFilter !== 'Semua' &&
+                      jenjangByAnak[selectedAnakFilter.trim().toLowerCase()]
+                    ? `REKAP PROGRES MURID • ${jenjangByAnak[
+                        selectedAnakFilter.trim().toLowerCase()
+                      ].toUpperCase()}`
+                    : 'REKAP PROGRES MURID'}
                 </Text>
               </View>
             </View>
@@ -2195,9 +2290,130 @@ export default function App() {
           </View>
         </PaperCard>
 
-        {/* Filter Anak & Tombol Tambah (Admin) */}
+        {/* Daftar Murid & Kode Akses Wali + Filter (Admin) */}
         {isAdmin && (
           <>
+            <PaperCard variant="ivory" layerColor={COLORS.forest} showTape>
+              <View style={styles.rosterHeaderRow}>
+                <View style={styles.flexOne}>
+                  <Text style={[styles.microLabel, fonts.sansBold]}>
+                    DATA TAB AKUN (WALI)
+                  </Text>
+                  <Text style={[styles.cardHeading, fonts.loraBold, { marginBottom: 0 }]}>
+                    Daftar Murid & Kode Akses Wali ({waliAccounts.length})
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.rosterToggleBtn}
+                  activeOpacity={0.8}
+                  onPress={() => setWaliRosterOpen((prev) => !prev)}
+                >
+                  <Feather
+                    name={waliRosterOpen ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={COLORS.forest}
+                  />
+                  <Text style={[styles.rosterToggleText, fonts.sansBold]}>
+                    {waliRosterOpen ? 'Tutup' : 'Lihat'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {waliRosterOpen && (
+                <View style={styles.rosterListWrap}>
+                  {waliAccounts.length === 0 ? (
+                    <Text style={[styles.emptyStateText, fonts.sansRegular]}>
+                      Belum ada akun wali (Peran = wali) di tab Akun Google
+                      Sheets.
+                    </Text>
+                  ) : (
+                    waliAccounts.map((acc) => {
+                      const isCopied = copiedKode === acc.Kode_Masuk;
+                      return (
+                        <View
+                          key={`${acc.Kode_Masuk}-${acc.Nama_Anak}`}
+                          style={styles.rosterItemCard}
+                        >
+                          <View style={styles.rosterItemTop}>
+                            <View style={styles.flexOne}>
+                              <Text style={[styles.rosterChildName, fonts.loraBold]}>
+                                {acc.Nama_Anak}
+                              </Text>
+                              <Text style={[styles.rosterWaliName, fonts.sansSemi]}>
+                                Wali: {acc.Nama_User || '-'}
+                              </Text>
+                            </View>
+                            {acc.Jenjang_Kelas ? (
+                              <View style={styles.jenjangPill}>
+                                <Text style={[styles.jenjangPillText, fonts.sansBold]}>
+                                  {acc.Jenjang_Kelas}
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
+
+                          <View style={styles.rosterBottomRow}>
+                            <View style={styles.kodePillBox}>
+                              <Ionicons
+                                name="key-outline"
+                                size={13}
+                                color={COLORS.forest}
+                              />
+                              <Text style={[styles.kodePillText, fonts.sansBold]}>
+                                {acc.Kode_Masuk || '-'}
+                              </Text>
+                            </View>
+
+                            <View style={styles.rosterActionBtns}>
+                              <TouchableOpacity
+                                style={[
+                                  styles.copyCodeBtn,
+                                  isCopied && styles.copyCodeBtnDone,
+                                ]}
+                                activeOpacity={0.8}
+                                onPress={() => handleCopyKodeMasuk(acc.Kode_Masuk)}
+                              >
+                                <Ionicons
+                                  name={
+                                    isCopied
+                                      ? 'checkmark-circle'
+                                      : 'copy-outline'
+                                  }
+                                  size={14}
+                                  color={isCopied ? COLORS.ivory : COLORS.forest}
+                                />
+                                <Text
+                                  style={[
+                                    styles.copyCodeBtnText,
+                                    fonts.sansBold,
+                                    isCopied && styles.copyCodeBtnTextDone,
+                                  ]}
+                                >
+                                  {isCopied ? 'Tersalin ✓' : 'Salin Kode'}
+                                </Text>
+                              </TouchableOpacity>
+
+                              <TouchableOpacity
+                                style={styles.waShareMiniBtn}
+                                activeOpacity={0.8}
+                                onPress={() => handleShareKodeWhatsApp(acc)}
+                              >
+                                <Ionicons
+                                  name="logo-whatsapp"
+                                  size={16}
+                                  color={COLORS.ivory}
+                                />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })
+                  )}
+                </View>
+              )}
+            </PaperCard>
+
             <View style={styles.sectionHeadingRow}>
               <Text style={[styles.sectionTitle, fonts.loraBold]}>
                 Filter Murid
@@ -2221,6 +2437,10 @@ export default function App() {
             >
               {['Semua', ...studentNamesPool].map((name) => {
                 const active = selectedAnakFilter === name;
+                const jenjang =
+                  name !== 'Semua'
+                    ? jenjangByAnak[name.trim().toLowerCase()]
+                    : '';
                 return (
                   <TouchableOpacity
                     key={name}
@@ -2238,7 +2458,7 @@ export default function App() {
                         active && styles.filterPillTextActive,
                       ]}
                     >
-                      {name}
+                      {jenjang ? `${name} (${jenjang})` : name}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -2302,9 +2522,18 @@ export default function App() {
                   </View>
                 </View>
 
-                <Text style={[styles.progresAnakName, fonts.loraBold]}>
-                  {item.Nama_Anak}
-                </Text>
+                <View style={styles.progresNameRow}>
+                  <Text style={[styles.progresAnakName, fonts.loraBold]}>
+                    {item.Nama_Anak}
+                  </Text>
+                  {jenjangByAnak[item.Nama_Anak.trim().toLowerCase()] ? (
+                    <View style={styles.jenjangMiniBadge}>
+                      <Text style={[styles.jenjangMiniText, fonts.sansBold]}>
+                        {jenjangByAnak[item.Nama_Anak.trim().toLowerCase()]}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
                 <Text style={[styles.progresCatatan, fonts.sansRegular]}>
                   {item.Catatan_Perkembangan || 'Tidak ada catatan tambahan.'}
                 </Text>
@@ -3301,55 +3530,98 @@ export default function App() {
               />
 
               <Text style={[styles.inputLabel, fonts.sansBold]}>
-                Nama Anak *
+                Pilih Murid (dari tab Akun) *
               </Text>
-              {studentNamesPool.length > 0 && (
-                <View style={styles.chipWrap}>
-                  {studentNamesPool.map((nm) => {
-                    const selected = progresModal.namaAnak === nm;
-                    return (
-                      <TouchableOpacity
-                        key={nm}
-                        style={[
-                          styles.choiceChip,
-                          selected && styles.choiceChipActive,
-                        ]}
-                        activeOpacity={0.8}
-                        onPress={() =>
-                          setProgresModal((prev) => ({
-                            ...prev,
-                            namaAnak: nm,
-                            error: '',
-                          }))
-                        }
-                      >
-                        <Text
-                          style={[
-                            styles.choiceChipText,
-                            fonts.sansSemi,
-                            selected && styles.choiceChipTextActive,
-                          ]}
-                        >
-                          {nm}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
-              <TextInput
-                style={[styles.textInput, fonts.sansRegular]}
-                value={progresModal.namaAnak}
-                onChangeText={(text) =>
-                  setProgresModal((prev) => ({
-                    ...prev,
-                    namaAnak: text,
-                    error: '',
-                  }))
+              {(() => {
+                const choices = [...waliStudentChoices];
+                if (
+                  progresModal.namaAnak &&
+                  !choices.some(
+                    (c) =>
+                      c.namaAnak.trim().toLowerCase() ===
+                      progresModal.namaAnak.trim().toLowerCase()
+                  )
+                ) {
+                  choices.unshift({
+                    namaAnak: progresModal.namaAnak,
+                    jenjangKelas: 'Data Tersimpan',
+                  });
                 }
-                placeholder="Ketik nama anak"
-                placeholderTextColor={COLORS.textMuted}
-              />
+
+                if (choices.length === 0) {
+                  return (
+                    <View style={styles.emptyStudentBox}>
+                      <Text style={[styles.emptyStudentText, fonts.sansRegular]}>
+                        Belum ada data murid dengan Peran “wali” di tab Akun
+                        Google Sheets.
+                      </Text>
+                    </View>
+                  );
+                }
+
+                return (
+                  <View style={styles.studentPickerList}>
+                    {choices.map((opt) => {
+                      const selected =
+                        progresModal.namaAnak.trim().toLowerCase() ===
+                        opt.namaAnak.trim().toLowerCase();
+                      return (
+                        <TouchableOpacity
+                          key={opt.namaAnak}
+                          style={[
+                            styles.studentPickerCard,
+                            selected && styles.studentPickerCardActive,
+                          ]}
+                          activeOpacity={0.8}
+                          onPress={() =>
+                            setProgresModal((prev) => ({
+                              ...prev,
+                              namaAnak: opt.namaAnak,
+                              error: '',
+                            }))
+                          }
+                        >
+                          <Ionicons
+                            name={
+                              selected ? 'checkmark-circle' : 'ellipse-outline'
+                            }
+                            size={19}
+                            color={selected ? COLORS.ivory : COLORS.forest}
+                          />
+                          <Text
+                            style={[
+                              styles.studentPickerName,
+                              fonts.sansBold,
+                              selected && styles.studentPickerNameActive,
+                            ]}
+                          >
+                            {opt.namaAnak}
+                          </Text>
+                          {opt.jenjangKelas ? (
+                            <View
+                              style={[
+                                styles.studentPickerJenjang,
+                                selected && styles.studentPickerJenjangActive,
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.studentPickerJenjangText,
+                                  fonts.sansBold,
+                                  selected &&
+                                    styles.studentPickerJenjangTextActive,
+                                ]}
+                              >
+                                {opt.jenjangKelas}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                );
+              })()}
 
               <Text style={[styles.inputLabel, fonts.sansBold]}>
                 Status Hadir
@@ -5284,5 +5556,201 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.dangerText,
     marginBottom: 8,
+  },
+
+  /* Daftar Murid & Kode Akses Wali + Student Picker */
+  rosterHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  rosterToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: COLORS.sage,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: COLORS.forest,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  rosterToggleText: {
+    fontSize: 12,
+    color: COLORS.forest,
+  },
+  rosterListWrap: {
+    marginTop: 12,
+    gap: 10,
+  },
+  rosterItemCard: {
+    backgroundColor: COLORS.cream,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.sageDark,
+    padding: 12,
+  },
+  rosterItemTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 10,
+  },
+  rosterChildName: {
+    fontSize: 15.5,
+    color: COLORS.moss,
+  },
+  rosterWaliName: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  jenjangPill: {
+    backgroundColor: COLORS.sage,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.forest,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+  },
+  jenjangPillText: {
+    fontSize: 11,
+    color: COLORS.forest,
+  },
+  rosterBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  kodePillBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: COLORS.ivory,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: COLORS.forest,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  kodePillText: {
+    fontSize: 12.5,
+    color: COLORS.moss,
+    letterSpacing: 0.4,
+  },
+  rosterActionBtns: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  copyCodeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: COLORS.ivory,
+    borderRadius: 10,
+    borderWidth: 1.2,
+    borderColor: COLORS.forest,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    minHeight: 36,
+  },
+  copyCodeBtnDone: {
+    backgroundColor: COLORS.forest,
+  },
+  copyCodeBtnText: {
+    fontSize: 12,
+    color: COLORS.forest,
+  },
+  copyCodeBtnTextDone: {
+    color: COLORS.ivory,
+  },
+  waShareMiniBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: COLORS.forest,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  progresNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  jenjangMiniBadge: {
+    backgroundColor: COLORS.ivory,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.forest,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  jenjangMiniText: {
+    fontSize: 10.5,
+    color: COLORS.forest,
+  },
+  studentPickerList: {
+    gap: 8,
+    marginBottom: 12,
+  },
+  studentPickerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: COLORS.cream,
+    borderRadius: 13,
+    borderWidth: 1.2,
+    borderColor: COLORS.forest,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 48,
+  },
+  studentPickerCardActive: {
+    backgroundColor: COLORS.forest,
+  },
+  studentPickerName: {
+    flex: 1,
+    fontSize: 13.5,
+    color: COLORS.moss,
+  },
+  studentPickerNameActive: {
+    color: COLORS.ivory,
+  },
+  studentPickerJenjang: {
+    backgroundColor: COLORS.sage,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  studentPickerJenjangActive: {
+    backgroundColor: COLORS.goldSoft,
+  },
+  studentPickerJenjangText: {
+    fontSize: 11,
+    color: COLORS.forest,
+  },
+  studentPickerJenjangTextActive: {
+    color: COLORS.moss,
+  },
+  emptyStudentBox: {
+    backgroundColor: COLORS.cream,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.sageDark,
+    padding: 12,
+    marginBottom: 12,
+  },
+  emptyStudentText: {
+    fontSize: 12.5,
+    color: COLORS.textMuted,
+    lineHeight: 18,
   },
 });
